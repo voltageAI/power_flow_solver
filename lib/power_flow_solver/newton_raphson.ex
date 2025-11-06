@@ -99,7 +99,7 @@ defmodule PowerFlowSolver.NewtonRaphson do
          ) do
       {:ok, final_voltage, iterations, true, _final_mismatch} ->
         # Convert voltage back to map format for compatibility
-        voltage_map = list_to_voltage_map(final_voltage)
+        voltage_map = list_to_voltage_map(final_voltage, system.buses)
         {:ok, voltage_map, iterations}
 
       {:ok, _final_voltage, iterations, false, final_mismatch} ->
@@ -118,7 +118,10 @@ defmodule PowerFlowSolver.NewtonRaphson do
     buses
     |> Enum.with_index()
     |> Enum.map(fn {bus, i} ->
-      v_mag = if is_number(bus.v_magnitude), do: bus.v_magnitude, else: Decimal.to_float(bus.v_magnitude)
+      v_mag =
+        if is_number(bus.v_magnitude),
+          do: bus.v_magnitude,
+          else: Decimal.to_float(bus.v_magnitude)
 
       # Solver format uses :type (not :bus_type)
       bus_type = if is_map(bus) and Map.has_key?(bus, :type), do: bus.type, else: bus.bus_type
@@ -163,35 +166,41 @@ defmodule PowerFlowSolver.NewtonRaphson do
       q_gen = Map.get(bus, :q_gen, 0.0)
       q_load = Map.get(bus, :q_load, 0.0)
 
-      p_scheduled = if is_number(p_gen) and is_number(p_load) do
-        p_gen - p_load
-      else
-        Decimal.to_float(Decimal.sub(p_gen, p_load))
-      end
+      p_scheduled =
+        if is_number(p_gen) and is_number(p_load) do
+          p_gen - p_load
+        else
+          Decimal.to_float(Decimal.sub(p_gen, p_load))
+        end
 
-      q_scheduled = if is_number(q_gen) and is_number(q_load) do
-        q_gen - q_load
-      else
-        Decimal.to_float(Decimal.sub(q_gen, q_load))
-      end
+      q_scheduled =
+        if is_number(q_gen) and is_number(q_load) do
+          q_gen - q_load
+        else
+          Decimal.to_float(Decimal.sub(q_gen, q_load))
+        end
 
       v_mag = Map.get(bus, :v_magnitude, 1.0)
       v_scheduled = if is_number(v_mag), do: v_mag, else: Decimal.to_float(v_mag)
 
       # Q-limits (convert to float if Decimal) - these are optional
       q_min_raw = Map.get(bus, :q_min)
-      q_min = cond do
-        is_nil(q_min_raw) -> nil
-        is_number(q_min_raw) -> q_min_raw
-        true -> Decimal.to_float(q_min_raw)
-      end
+
+      q_min =
+        cond do
+          is_nil(q_min_raw) -> nil
+          is_number(q_min_raw) -> q_min_raw
+          true -> Decimal.to_float(q_min_raw)
+        end
 
       q_max_raw = Map.get(bus, :q_max)
-      q_max = cond do
-        is_nil(q_max_raw) -> nil
-        is_number(q_max_raw) -> q_max_raw
-        true -> Decimal.to_float(q_max_raw)
-      end
+
+      q_max =
+        cond do
+          is_nil(q_max_raw) -> nil
+          is_number(q_max_raw) -> q_max_raw
+          true -> Decimal.to_float(q_max_raw)
+        end
 
       # Q_load needed for converting Q injection to Q generation
       q_load_float = if is_number(q_load), do: q_load, else: Decimal.to_float(q_load)
@@ -220,10 +229,14 @@ defmodule PowerFlowSolver.NewtonRaphson do
   defp voltage_to_list(voltage) when is_tuple(voltage), do: Tuple.to_list(voltage)
 
   # Convert list of {magnitude, angle} tuples back to voltage map
-  defp list_to_voltage_map(voltage_list) do
+  # Uses the actual bus IDs from the system, not array indices
+  defp list_to_voltage_map(voltage_list, buses) do
     voltage_list
-    |> Enum.with_index()
-    |> Enum.map(fn {voltage, i} -> {i, voltage} end)
+    |> Enum.zip(buses)
+    |> Enum.map(fn {voltage, bus} ->
+      bus_id = Map.get(bus, :id)
+      {bus_id, voltage}
+    end)
     |> Map.new()
   end
 
@@ -252,25 +265,44 @@ defmodule PowerFlowSolver.NewtonRaphson do
         r = if is_number(branch.r), do: branch.r, else: Decimal.to_float(branch.r)
         x = if is_number(branch.x), do: branch.x, else: Decimal.to_float(branch.x)
         # Transformers don't have b field, branches do
-        b_charging = cond do
-          Map.has_key?(branch, :b) and is_number(branch.b) -> branch.b
-          Map.has_key?(branch, :b) and branch.b != nil -> Decimal.to_float(branch.b)
-          true -> 0.0
-        end
+        b_charging =
+          cond do
+            Map.has_key?(branch, :b) and is_number(branch.b) -> branch.b
+            Map.has_key?(branch, :b) and branch.b != nil -> Decimal.to_float(branch.b)
+            true -> 0.0
+          end
+
         # Transformers use tap_ratio field, branches use tap
-        tap = cond do
-          Map.has_key?(branch, :tap_ratio) and branch.tap_ratio != nil -> Decimal.to_float(branch.tap_ratio)
-          Map.has_key?(branch, :tap) and is_number(branch.tap) -> branch.tap
-          Map.has_key?(branch, :tap) and branch.tap != nil -> Decimal.to_float(branch.tap)
-          true -> 1.0
-        end
+        tap =
+          cond do
+            Map.has_key?(branch, :tap_ratio) and branch.tap_ratio != nil ->
+              Decimal.to_float(branch.tap_ratio)
+
+            Map.has_key?(branch, :tap) and is_number(branch.tap) ->
+              branch.tap
+
+            Map.has_key?(branch, :tap) and branch.tap != nil ->
+              Decimal.to_float(branch.tap)
+
+            true ->
+              1.0
+          end
+
         # Transformers use phase_shift field
-        shift = cond do
-          Map.has_key?(branch, :phase_shift) and branch.phase_shift != nil -> Decimal.to_float(branch.phase_shift)
-          Map.has_key?(branch, :shift) and is_number(branch.shift) -> branch.shift
-          Map.has_key?(branch, :shift) and branch.shift != nil -> Decimal.to_float(branch.shift)
-          true -> 0.0
-        end
+        shift =
+          cond do
+            Map.has_key?(branch, :phase_shift) and branch.phase_shift != nil ->
+              Decimal.to_float(branch.phase_shift)
+
+            Map.has_key?(branch, :shift) and is_number(branch.shift) ->
+              branch.shift
+
+            Map.has_key?(branch, :shift) and branch.shift != nil ->
+              Decimal.to_float(branch.shift)
+
+            true ->
+              0.0
+          end
 
         from_bus = if Map.has_key?(branch, :from), do: branch.from, else: branch.from_bus_number
         to_bus = if Map.has_key?(branch, :to), do: branch.to, else: branch.to_bus_number
