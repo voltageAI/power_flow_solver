@@ -1,0 +1,28 @@
+[package]
+name = "power_flow_solver"
+version = "0.1.0"
+authors = ["Voltage AI"]
+edition = "2021"
+
+[lib]
+name = "power_flow_solver"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.36.0"
+# Sparse matrix library for Rust
+sprs = "0.11"
+# Linear algebra routines
+num-complex = "0.4"
+# Dense array support
+ndarray = "0.15"
+# Dense linear algebra
+ndarray-linalg = { version = "0.16", features = ["openblas-static"] }
+# Sparse direct solver with parallel support (includes AMD ordering automatically)
+faer = { version = "0.19", features = ["std", "rayon"] }
+# Parallel iterators
+rayon = "1.8"
+
+[profile.release]
+lto = true
+opt-level = 3
