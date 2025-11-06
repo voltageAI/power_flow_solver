@@ -157,38 +157,46 @@ defmodule PowerFlowSolver.NewtonRaphson do
         end
 
       # P and Q are net injections: generation - load
-      # Handle both float and Decimal types
-      p_scheduled = if is_number(bus.p_gen) and is_number(bus.p_load) do
-        bus.p_gen - bus.p_load
+      # Handle both float and Decimal types, and missing fields
+      p_gen = Map.get(bus, :p_gen, 0.0)
+      p_load = Map.get(bus, :p_load, 0.0)
+      q_gen = Map.get(bus, :q_gen, 0.0)
+      q_load = Map.get(bus, :q_load, 0.0)
+
+      p_scheduled = if is_number(p_gen) and is_number(p_load) do
+        p_gen - p_load
       else
-        Decimal.to_float(Decimal.sub(bus.p_gen, bus.p_load))
+        Decimal.to_float(Decimal.sub(p_gen, p_load))
       end
 
-      q_scheduled = if is_number(bus.q_gen) and is_number(bus.q_load) do
-        bus.q_gen - bus.q_load
+      q_scheduled = if is_number(q_gen) and is_number(q_load) do
+        q_gen - q_load
       else
-        Decimal.to_float(Decimal.sub(bus.q_gen, bus.q_load))
+        Decimal.to_float(Decimal.sub(q_gen, q_load))
       end
 
-      v_scheduled = if is_number(bus.v_magnitude), do: bus.v_magnitude, else: Decimal.to_float(bus.v_magnitude)
+      v_mag = Map.get(bus, :v_magnitude, 1.0)
+      v_scheduled = if is_number(v_mag), do: v_mag, else: Decimal.to_float(v_mag)
 
-      # Q-limits (convert to float if Decimal)
+      # Q-limits (convert to float if Decimal) - these are optional
+      q_min_raw = Map.get(bus, :q_min)
       q_min = cond do
-        is_nil(bus.q_min) -> nil
-        is_number(bus.q_min) -> bus.q_min
-        true -> Decimal.to_float(bus.q_min)
+        is_nil(q_min_raw) -> nil
+        is_number(q_min_raw) -> q_min_raw
+        true -> Decimal.to_float(q_min_raw)
       end
 
+      q_max_raw = Map.get(bus, :q_max)
       q_max = cond do
-        is_nil(bus.q_max) -> nil
-        is_number(bus.q_max) -> bus.q_max
-        true -> Decimal.to_float(bus.q_max)
+        is_nil(q_max_raw) -> nil
+        is_number(q_max_raw) -> q_max_raw
+        true -> Decimal.to_float(q_max_raw)
       end
 
       # Q_load needed for converting Q injection to Q generation
-      q_load = if is_number(bus.q_load), do: bus.q_load, else: Decimal.to_float(bus.q_load)
+      q_load_float = if is_number(q_load), do: q_load, else: Decimal.to_float(q_load)
 
-      {bus_type, p_scheduled, q_scheduled, v_scheduled, q_min, q_max, q_load}
+      {bus_type, p_scheduled, q_scheduled, v_scheduled, q_min, q_max, q_load_float}
     end)
   end
 
