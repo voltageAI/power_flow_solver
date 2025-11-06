@@ -43,6 +43,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
     otp_app: :power_flow_solver,
     crate: "power_flow_solver",
     base_url: "https://github.com/voltageAI/power_flow_solver/releases/download/v#{version}",
+    # Set POWER_FLOW_FORCE_BUILD=true to build from source instead of downloading precompiled binary
     force_build: System.get_env("POWER_FLOW_FORCE_BUILD") in ["1", "true"],
     version: version,
     targets: ~w(
@@ -99,6 +100,8 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
   def sparse_mv(_row_ptrs, _col_indices, _values, _x),
     do: :erlang.nif_error(:nif_not_loaded)
 
+  def validate_jacobian_rust(buses, y_bus_data, voltage, epsilon \\ 1.0e-7)
+
   @doc """
   Validates the analytical Jacobian against numerical finite differences.
 
@@ -131,7 +134,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       IO.puts("Avg relative error: \#{avg_err * 100}%")
       IO.puts("Number of large errors: \#{num_errs}")
   """
-  def validate_jacobian_rust(_buses, _y_bus_data, _voltage, _epsilon \\ 1.0e-7),
+  def validate_jacobian_rust(_buses, _y_bus_data, _voltage, _epsilon),
     do: :erlang.nif_error(:nif_not_loaded)
 
   @doc """
@@ -491,34 +494,4 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
         _q_tolerance
       ),
       do: :erlang.nif_error(:nif_not_loaded)
-
-  @doc """
-  Validates Jacobian matrix using numerical differentiation.
-
-  Compares analytical Jacobian against numerical derivatives computed
-  via finite differences to identify formula errors.
-
-  ## Arguments
-
-  - `buses` - List of bus data tuples: `{type, p_sched, q_sched, v_sched, q_min, q_max, q_load}`
-  - `y_bus_data` - Y-bus matrix in CSR format: `{row_ptrs, col_indices, values}`
-  - `voltage` - Current voltage as `{magnitude, angle}` tuples
-  - `epsilon` - Finite difference step size (default: 1.0e-7)
-
-  ## Returns
-
-  - `{:ok, {max_error, avg_error, num_large_errors, error_details}}` - Validation results
-  - `{:error, reason}` - Error message if validation fails
-
-  ## Example
-
-      buses = [{2, 0.5, 0.2, 1.0, nil, nil, 0.0}, ...]
-      y_bus = {row_ptrs, col_indices, values}
-      voltage = [{1.0, 0.0}, {0.98, -0.05}, ...]
-
-      {:ok, {max_err, avg_err, num_err, details}} =
-        validate_jacobian_rust(buses, y_bus, voltage, 1.0e-7)
-  """
-  def validate_jacobian_rust(_buses, _y_bus_data, _voltage, _epsilon),
-    do: :erlang.nif_error(:nif_not_loaded)
 end

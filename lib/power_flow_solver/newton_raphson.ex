@@ -105,7 +105,7 @@ defmodule PowerFlowSolver.NewtonRaphson do
       {:ok, _final_voltage, iterations, false, final_mismatch} ->
         {:error, "Failed to converge in #{iterations} iterations (mismatch: #{final_mismatch})"}
 
-      {:error, [], 0, false, 0.0} ->
+      {:error, [], 0, false, mismatch} when mismatch == 0.0 or mismatch == -0.0 ->
         {:error, "Rust solver internal error (check stderr for details)"}
 
       {:error, reason} ->

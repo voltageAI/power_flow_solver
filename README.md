@@ -18,24 +18,31 @@ Add to your `mix.exs`:
 ```elixir
 def deps do
   [
-    {:power_flow_solver, git: "https://github.com/voltageAI/power_flow_solver.git", tag: "v0.1.0"}
+    {:power_flow_solver, git: "https://github.com/voltageAI/power_flow_solver.git", tag: "v0.1.2"}
   ]
 end
 ```
 
+**Precompiled binaries** are available for:
+- macOS (Intel & Apple Silicon)
+- Linux (GNU & musl)
+
+The library will automatically download the appropriate binary for your platform.
+
 ### Building from Source
 
-If you prefer to build from source or pre-compiled binaries aren't available for your platform:
+If precompiled binaries aren't available for your platform or you prefer to build from source:
 
 ```bash
-export POWER_FLOW_FORCE_BUILD=1
-mix deps.get
+export POWER_FLOW_FORCE_BUILD=true
+mix deps.compile power_flow_solver
 ```
 
-Requires:
-- Rust 1.70+
+**Requirements:**
+- Rust 1.70+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 - C compiler (gcc/clang)
-- OpenBLAS (for linear algebra)
+
+**Note:** Once the v0.1.2 release is published on GitHub, precompiled binaries will be available and Rust won't be required for most users.
 
 ## Quick Start
 

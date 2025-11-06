@@ -115,7 +115,7 @@ defmodule PowerFlowSolver do
   Copyright (c) 2024 Voltage AI
   """
 
-  alias PowerFlowSolver.{NewtonRaphson, SparseLinearAlgebra}
+  alias PowerFlowSolver.NewtonRaphson
 
   @doc """
   Returns the version of the PowerFlowSolver library.

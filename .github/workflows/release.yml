@@ -1,0 +1,100 @@
+name: Build precompiled NIFs
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build_release:
+    name: Build release artifacts
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-20.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-20.04
+            target: x86_64-unknown-linux-musl
+          - os: macos-11
+            target: x86_64-apple-darwin
+          - os: macos-11
+            target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '26.0'
+          elixir-version: '1.17.0'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl-tools (Linux musl only)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Build the NIF
+        run: |
+          export RUSTFLAGS="-C target-feature=+crt-static"
+          mix compile
+        env:
+          POWER_FLOW_FORCE_BUILD: "true"
+          RUSTLER_TARGET: ${{ matrix.target }}
+
+      - name: Build release tarball
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          PKG_NAME="libpower_flow_solver-v${VERSION}-nif-2.15-${{ matrix.target }}.so.tar.gz"
+          cd native/power_flow_solver/target/${{ matrix.target }}/release
+          tar -czf "$PKG_NAME" libpower_flow_solver.so
+          mv "$PKG_NAME" "$GITHUB_WORKSPACE/"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: nif-${{ matrix.target }}
+          path: "*.tar.gz"
+
+  create_release:
+    name: Create GitHub Release
+    needs: build_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
