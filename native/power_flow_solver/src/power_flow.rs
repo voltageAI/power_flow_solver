@@ -27,6 +27,7 @@ pub struct BusData {
     pub bus_type: BusType,
     pub p_scheduled: f64,
     pub q_scheduled: f64,
+    #[allow(dead_code)]
     pub v_scheduled: f64,
     pub q_min: Option<f64>,
     pub q_max: Option<f64>,
@@ -511,7 +512,7 @@ fn build_jacobian_row(
 /// Calculate mismatch vector
 fn calculate_mismatch(
     system: &PowerSystem,
-    voltage: &[Complex64],
+    _voltage: &[Complex64],
     power_injections: &[(f64, f64)],
     angle_vars: &[usize],
     vmag_vars: &[usize],
@@ -542,6 +543,7 @@ fn calculate_norm(vec: &[f64]) -> f64 {
 
 /// Update voltage from delta corrections
 /// Convention: J * delta = -mismatch, then x_new = x_old + delta
+#[allow(dead_code)]
 fn update_voltage(
     voltage: &mut [Complex64],
     delta: &[f64],
@@ -598,7 +600,7 @@ fn line_search_backtracking(
 
     let mut step_size = 1.0;
 
-    for trial in 0..MAX_TRIALS {
+    for _trial in 0..MAX_TRIALS {
         // Create trial voltage with this step size
         let mut trial_voltage = voltage.to_vec();
         update_voltage_with_step_size(&mut trial_voltage, delta, angle_vars, vmag_vars, step_size);
@@ -822,7 +824,7 @@ pub fn validate_jacobian(
     let mut error_strings = Vec::new();
     let num_p_eqs = angle_vars.len();
 
-    for (i, &(row, col, analytical, numerical, error)) in validation.errors.iter().take(20).enumerate() {
+    for (_i, &(row, col, analytical, numerical, error)) in validation.errors.iter().take(20).enumerate() {
         let eq_type = if row < num_p_eqs { "P" } else { "Q" };
         let eq_bus = if row < num_p_eqs {
             angle_vars[row]
@@ -991,7 +993,7 @@ fn compute_numerical_jacobian(
 
     // Compute base mismatch
     let base_power = compute_all_power_injections(&system.y_bus, voltage);
-    let base_mismatch = compute_mismatch_vec(system, &base_power, angle_vars, vmag_vars);
+    let _base_mismatch = compute_mismatch_vec(system, &base_power, angle_vars, vmag_vars);
 
     // Perturb each variable and compute derivatives
     for var_idx in 0..num_vars {

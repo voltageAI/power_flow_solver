@@ -1,4 +1,4 @@
-use rustler::{NifResult, ResourceArc, Encoder, Env, Term};
+use rustler::{NifResult, ResourceArc, Encoder};
 use num_complex::Complex64;
 use sprs::CsMat;
 use ndarray::{Array1, Array2};
@@ -6,7 +6,6 @@ use ndarray_linalg::Solve;
 use faer::complex_native::c64;
 use faer::prelude::SpSolver;
 use std::sync::Arc;
-use std::collections::HashMap;
 
 mod power_flow;
 
@@ -966,7 +965,6 @@ fn calculate_q_injection_batch_rust(
 /// * `{:error, reason}` - Error if creation fails
 #[rustler::nif]
 fn create_voltage_resource(
-    env: rustler::Env,
     voltage: Vec<(f64, f64)>,
 ) -> NifResult<(rustler::Atom, ResourceArc<VoltageResource>)> {
     let n = voltage.len();
@@ -1141,7 +1139,7 @@ fn solve_power_flow_rust(
             result.converged,
             result.final_mismatch,
         )),
-        Err(err) => Ok((
+        Err(_err) => Ok((
             atoms::error(),
             vec![],
             0,
@@ -1153,11 +1151,11 @@ fn solve_power_flow_rust(
 
 
 // Load the resources into the Rustler environment
+#[allow(non_local_definitions)]
 fn load(env: rustler::Env, _: rustler::Term) -> bool {
-    rustler::resource!(SymbolicLuResource, env);
-    rustler::resource!(LuFactorResource, env);
-    rustler::resource!(VoltageResource, env);
-    true
+    rustler::resource!(SymbolicLuResource, env)
+        && rustler::resource!(LuFactorResource, env)
+        && rustler::resource!(VoltageResource, env)
 }
 
 /// Validate Jacobian using numerical differentiation
@@ -1233,24 +1231,5 @@ fn validate_jacobian_rust(
     }
 }
 
-rustler::init!(
-    "Elixir.PowerFlowSolver.SparseLinearAlgebra",
-    [
-        solve_csr,
-        sparse_mv,
-        lu_factorize,
-        create_symbolic_lu,
-        factorize_with_symbolic,
-        solve_with_lu,
-        solve_multiple_with_lu,
-        build_jacobian_rust,
-        calculate_q_injection_rust,
-        calculate_q_injection_batch_rust,
-        create_voltage_resource,
-        calculate_q_batch_from_resource,
-        solve_power_flow_rust,
-        validate_jacobian_rust
-    ],
-    load = load
-);
+rustler::init!("Elixir.PowerFlowSolver.SparseLinearAlgebra", load = load);
 
