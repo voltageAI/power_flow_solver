@@ -46,7 +46,8 @@ defmodule PowerFlowSolver.MixProject do
       {:decimal, "~> 2.0"},
       {:rustler, "~> 0.36.0", runtime: false},
       {:rustler_precompiled, "~> 0.8"},
-      {:ex_doc, "~> 0.31", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.31", only: :dev, runtime: false},
+      {:power_system_parsers, github: "voltageAI/power_system_parsers", only: :test}
     ]
   end
 
