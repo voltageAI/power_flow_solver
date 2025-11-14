@@ -113,7 +113,8 @@ defmodule PowerFlowSolver.NewtonRaphson do
     end
   end
 
-  # Initialize voltage with flat start (1.0 pu at 0 degrees for all buses)
+  # Initialize voltage using bus data (magnitude and angle from input)
+  # For solved cases, this allows immediate convergence
   defp initialize_voltage(buses) do
     buses
     |> Enum.with_index()
@@ -123,23 +124,34 @@ defmodule PowerFlowSolver.NewtonRaphson do
           do: bus.v_magnitude,
           else: Decimal.to_float(bus.v_magnitude)
 
+      # Get angle and convert to radians if present
+      v_angle_deg =
+        if Map.has_key?(bus, :v_angle) and bus.v_angle != nil do
+          if is_number(bus.v_angle),
+            do: bus.v_angle,
+            else: Decimal.to_float(bus.v_angle)
+        else
+          0.0
+        end
+
+      v_angle_rad = v_angle_deg * :math.pi() / 180.0
+
       # Solver format uses :type (not :bus_type)
       bus_type = if is_map(bus) and Map.has_key?(bus, :type), do: bus.type, else: bus.bus_type
 
       case bus_type do
         :slack ->
-          # Slack bus: use specified voltage
-          {i, {v_mag, 0.0}}
+          # Slack bus: use specified voltage and angle
+          {i, {v_mag, v_angle_rad}}
 
         :pv ->
-          # PV bus: use specified magnitude, flat angle
-          {i, {v_mag, 0.0}}
+          # PV bus: use specified magnitude and angle
+          {i, {v_mag, v_angle_rad}}
 
         :pq ->
-          # PQ bus: SMART INITIALIZATION - use bus's scheduled voltage
-          # (typically from power flow data, often near actual solution)
-          # This gives much better starting point than flat 1.0 pu
-          {i, {v_mag, 0.0}}
+          # PQ bus: use bus's voltage from input (for warm start/solved cases)
+          # If no angle provided, defaults to 0.0
+          {i, {v_mag, v_angle_rad}}
       end
     end)
     |> Map.new()

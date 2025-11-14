@@ -5,8 +5,8 @@ defmodule PowerFlowSolver.SixBus000Test do
   @test_data_dir Path.join(__DIR__, "../test_data")
   @raw_file_path Path.join(@test_data_dir, "000_6bus_v33.RAW")
 
-  describe "PSS/E RAW 000_6bus solved case" do
-    test "solves 6-bus test case with detailed logging" do
+  describe "PSS/E RAW 000_6bus case" do
+    test "solves 6-bus test case with detailed logging (PQ-only configuration)" do
       # Parse the RAW file using power_system_parsers
       assert File.exists?(@raw_file_path), "Test file not found: #{@raw_file_path}"
 
@@ -19,7 +19,8 @@ defmodule PowerFlowSolver.SixBus000Test do
 
       # Log case metadata
       Logger.info("\n--- CASE METADATA ---")
-      Logger.info("Description: Test 000 6bus with 5 PQ buses 1 Generator PV slack")
+      Logger.info("Description: Test 000 6bus with 5 PQ buses, 1 slack bus")
+      Logger.info("Note: Initial voltages are from a different case configuration (when Bus 2 was PV)")
 
       # Log metadata structure (areas, zones, etc.)
       if Map.has_key?(metadata, :areas) and length(metadata.areas) > 0 do
