@@ -66,7 +66,7 @@ defmodule PowerFlowSolver.NewtonRaphson do
     q_tolerance = Keyword.get(opts, :q_tolerance, 1.0e-4)
 
     # Build Y-bus if not provided
-    y_bus = build_or_get_y_bus(system)
+    y_bus = build_y_bus(system)
 
     # Initialize voltage vector
     # If custom initial voltage not provided, use flat start (1.0 p.u. at 0 degrees)
@@ -245,18 +245,26 @@ defmodule PowerFlowSolver.NewtonRaphson do
   defp tuple_or_list_to_list(data) when is_list(data), do: data
 
   # Build Y-bus if not already built, or return existing
-  defp build_or_get_y_bus(%{y_bus_tuple: y_bus_tuple}) when not is_nil(y_bus_tuple),
+  # This function is public to allow testing and external Y-bus construction
+  def build_y_bus(%{y_bus_tuple: y_bus_tuple}) when not is_nil(y_bus_tuple),
     do: y_bus_tuple
 
-  defp build_or_get_y_bus(%{y_bus: y_bus}) when not is_nil(y_bus) and is_map(y_bus),
+  def build_y_bus(%{y_bus: y_bus}) when not is_nil(y_bus) and is_map(y_bus),
     do: y_bus
 
-  defp build_or_get_y_bus(system) do
+  def build_y_bus(system) do
     # Build Y-bus from branches and transformers with float conversion
     num_buses = length(system.buses)
 
     # Combine branches and transformers
-    all_lines = (system.branches || []) ++ (system.transformers || [])
+    # Support both separate branches/transformers and combined lines format
+    all_lines =
+      cond do
+        Map.has_key?(system, :lines) and not is_nil(system.lines) ->
+          system.lines
+        true ->
+          (system.branches || []) ++ (system.transformers || [])
+      end
 
     # Initialize sparse matrix storage
     entries =
