@@ -124,8 +124,8 @@ defmodule PowerFlowSolver.NewtonRaphson do
           do: bus.v_magnitude,
           else: Decimal.to_float(bus.v_magnitude)
 
-      # Get angle and convert to radians if present
-      v_angle_deg =
+      # Get angle (already in radians from parser)
+      v_angle_rad =
         if Map.has_key?(bus, :v_angle) and bus.v_angle != nil do
           if is_number(bus.v_angle),
             do: bus.v_angle,
@@ -133,8 +133,6 @@ defmodule PowerFlowSolver.NewtonRaphson do
         else
           0.0
         end
-
-      v_angle_rad = v_angle_deg * :math.pi() / 180.0
 
       # Solver format uses :type (not :bus_type)
       bus_type = if is_map(bus) and Map.has_key?(bus, :type), do: bus.type, else: bus.bus_type
