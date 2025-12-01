@@ -65,6 +65,11 @@ defmodule PowerFlowSolver.NewtonRaphson do
     enforce_q_limits = Keyword.get(opts, :enforce_q_limits, false)
     q_tolerance = Keyword.get(opts, :q_tolerance, 1.0e-4)
 
+    # CRITICAL: Sort buses by ID to ensure correct alignment with Y-bus matrix
+    # The Y-bus uses bus IDs as row/column indices, so buses must be in order
+    sorted_buses = Enum.sort_by(system.buses, & &1.id)
+    system = %{system | buses: sorted_buses}
+
     # Build Y-bus if not provided
     y_bus = build_y_bus(system)
 
