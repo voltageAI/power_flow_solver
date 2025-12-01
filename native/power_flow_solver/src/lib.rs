@@ -1071,14 +1071,10 @@ fn solve_power_flow_rust(
     q_tolerance: f64,
 ) -> NifResult<(rustler::Atom, Vec<(f64, f64)>, usize, bool, f64)> {
 
-    eprintln!("\n=== NIF ENTRY: solve_power_flow_rust ===");
-    eprintln!("Buses received: {}", buses.len());
-    eprintln!("Q-limits enabled: {}", enforce_q_limits);
-    eprintln!("First 3 buses:");
-    for (i, (btype, p, q, v, q_min, q_max, q_load)) in buses.iter().take(3).enumerate() {
-        eprintln!("  Bus {}: type={}, P={:.6}, Q={:.6}, V={:.6}, Q_min={:?}, Q_max={:?}, Q_load={:.6}",
-            i, btype, p, q, v, q_min, q_max, q_load);
-    }
+    // Debug logging (commented out for cleaner test output)
+    // eprintln!("\n=== NIF ENTRY: solve_power_flow_rust ===");
+    // eprintln!("Buses received: {}", buses.len());
+    // eprintln!("Q-limits enabled: {}", enforce_q_limits);
 
     // Convert bus data
     let bus_data: Vec<power_flow::BusData> = buses
@@ -1098,13 +1094,9 @@ fn solve_power_flow_rust(
     // Convert Y-bus data
     let (row_ptrs, col_indices, values_tuples) = y_bus_data;
 
-    eprintln!("Y-bus CSR: {} row_ptrs, {} col_indices, {} values",
-        row_ptrs.len(), col_indices.len(), values_tuples.len());
-    eprintln!("Row ptrs (first 5): {:?}", &row_ptrs[..row_ptrs.len().min(5)]);
-    eprintln!("First 3 Y-bus values:");
-    for (i, (re, im)) in values_tuples.iter().take(3).enumerate() {
-        eprintln!("  Y[{}] = {:.6} + j{:.6}", i, re, im);
-    }
+    // Debug logging (commented out for cleaner test output)
+    // eprintln!("Y-bus CSR: {} row_ptrs, {} col_indices, {} values",
+    //     row_ptrs.len(), col_indices.len(), values_tuples.len());
 
     let values: Vec<Complex64> = values_tuples
         .into_iter()

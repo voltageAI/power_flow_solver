@@ -76,20 +76,16 @@ pub fn solve_power_flow(
     config: SolverConfig,
 ) -> Result<PowerFlowResult, String> {
 
-    eprintln!("\n=== RUST POWER FLOW SOLVER DEBUG ===");
-    eprintln!("System: {} buses, max_iter={}, tol={}",
-        system.n_buses, config.max_iterations, config.tolerance);
+    // Debug logging (commented out for cleaner test output)
+    // eprintln!("\n=== RUST POWER FLOW SOLVER DEBUG ===");
+    // eprintln!("System: {} buses, max_iter={}, tol={}",
+    //     system.n_buses, config.max_iterations, config.tolerance);
 
     // Convert voltage to complex numbers
     let mut voltage: Vec<Complex64> = initial_voltage
         .iter()
         .map(|&(mag, ang)| Complex64::new(mag * ang.cos(), mag * ang.sin()))
         .collect();
-
-    eprintln!("Initial voltage (first 3):");
-    for (i, v) in voltage.iter().take(3).enumerate() {
-        eprintln!("  Bus {}: {} ∠ {}°", i, v.norm(), v.arg().to_degrees());
-    }
 
     let mut iteration = 0;
     let mut mismatch_norm = f64::MAX;
@@ -99,11 +95,6 @@ pub fn solve_power_flow(
     let (mut angle_vars, mut vmag_vars) = determine_variables(&system.buses);
     let mut num_vars = angle_vars.len() + vmag_vars.len();
 
-    eprintln!("Variables: {} P equations, {} Q equations, {} total",
-        angle_vars.len(), vmag_vars.len(), num_vars);
-    eprintln!("Angle vars: {:?}", angle_vars);
-    eprintln!("Vmag vars: {:?}", vmag_vars);
-
     // Create symbolic LU factorization once
     // (This will use the existing create_symbolic_lu function)
 
@@ -111,20 +102,17 @@ pub fn solve_power_flow(
         iteration += 1;
 
         if iteration <= 2 {
-            eprintln!("\n--- Iteration {} ---", iteration);
+            // Debug logging (commented out)
+            // eprintln!("\n--- Iteration {} ---", iteration);
         }
 
         // 1. Calculate power injections
         let power_injections = compute_all_power_injections(&system.y_bus, &voltage);
 
-        if iteration == 1 {
-            eprintln!("Power injections (first 3 buses):");
-            for (i, (p, q)) in power_injections.iter().take(3).enumerate() {
-                let bus = &system.buses[i];
-                eprintln!("  Bus {}: P_calc={:.6}, Q_calc={:.6}, P_sched={:.6}, Q_sched={:.6}",
-                    i, p, q, bus.p_scheduled, bus.q_scheduled);
-            }
-        }
+        // Debug logging (commented out)
+        // if iteration == 1 {
+        //     eprintln!("Power injections (first 3 buses):");
+        // }
 
         // 2. Build Jacobian matrix
         let jacobian = build_jacobian(
@@ -135,13 +123,7 @@ pub fn solve_power_flow(
             &vmag_vars,
         )?;
 
-        if iteration == 1 {
-            eprintln!("\nJacobian info:");
-            eprintln!("  Dimensions: {}x{}", num_vars, num_vars);
-            eprintln!("  Non-zeros: {}", jacobian.values.len());
-            eprintln!("  Row ptrs (first 5): {:?}", &jacobian.row_ptrs[..jacobian.row_ptrs.len().min(5)]);
-            eprintln!("  First 10 Jacobian values: {:?}", &jacobian.values[..jacobian.values.len().min(10)]);
-        }
+        // Debug logging (commented out)
 
         // 3. Calculate mismatch vector
         let mismatch = calculate_mismatch(
@@ -155,10 +137,7 @@ pub fn solve_power_flow(
         // 4. Check convergence
         mismatch_norm = calculate_norm(&mismatch);
 
-        if iteration == 1 {
-            eprintln!("Mismatch (first 5 values): {:?}", &mismatch[..mismatch.len().min(5)]);
-            eprintln!("Mismatch norm: {:.6e}", mismatch_norm);
-        }
+        // Debug logging (commented out)
 
         if mismatch_norm < config.tolerance {
             converged = true;
@@ -169,9 +148,7 @@ pub fn solve_power_flow(
         let negated_mismatch: Vec<f64> = mismatch.iter().map(|x| -x).collect();
         let delta = solve_sparse_system_direct(&jacobian, &negated_mismatch)?;
 
-        if iteration == 1 {
-            eprintln!("Delta (first 5 values): {:?}", &delta[..delta.len().min(5)]);
-        }
+        // Debug logging (commented out)
 
         // 6. Line search to find optimal step size
         let step_size = line_search_backtracking(
@@ -184,19 +161,15 @@ pub fn solve_power_flow(
             &system.y_bus,
         );
 
-        if step_size < 1.0 {
-            eprintln!("Line search: using step_size = {:.4}", step_size);
-        }
+        // Debug logging (commented out)
+        // if step_size < 1.0 {
+        //     eprintln!("Line search: using step_size = {:.4}", step_size);
+        // }
 
         // 7. Update voltage with adaptive step size
         update_voltage_with_step_size(&mut voltage, &delta, &angle_vars, &vmag_vars, step_size);
 
-        if iteration <= 2 {
-            eprintln!("After update (first 3 buses):");
-            for (i, v) in voltage.iter().take(3).enumerate() {
-                eprintln!("  Bus {}: {} ∠ {}°", i, v.norm(), v.arg().to_degrees());
-            }
-        }
+        // Debug logging (commented out)
 
         // 8. Check and enforce Q-limits
         if config.enforce_q_limits {
@@ -208,12 +181,13 @@ pub fn solve_power_flow(
             );
 
             if !q_changes.is_empty() {
-                eprintln!("Q-limit violations detected: {} buses changed", q_changes.len());
+                // Debug logging (commented out)
+                // eprintln!("Q-limit violations detected: {} buses changed", q_changes.len());
+
                 // Rebuild variable indices after bus type changes
                 angle_vars = determine_variables(&system.buses).0;
                 vmag_vars = determine_variables(&system.buses).1;
                 num_vars = angle_vars.len() + vmag_vars.len();
-                eprintln!("  Updated variables: {} P equations, {} Q equations", angle_vars.len(), vmag_vars.len());
             }
         }
     }
@@ -228,9 +202,10 @@ pub fn solve_power_flow(
         })
         .collect();
 
-    eprintln!("\n=== SOLVER FINISHED ===");
-    eprintln!("Converged: {}, Iterations: {}, Final mismatch: {:.6e}",
-        converged, iteration, mismatch_norm);
+    // Debug logging (commented out)
+    // eprintln!("\n=== SOLVER FINISHED ===");
+    // eprintln!("Converged: {}, Iterations: {}, Final mismatch: {:.6e}",
+    //     converged, iteration, mismatch_norm);
 
     Ok(PowerFlowResult {
         voltage: final_voltage,
