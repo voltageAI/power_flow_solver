@@ -1,7 +1,7 @@
 defmodule PowerFlowSolver.MixProject do
   use Mix.Project
 
-  @version "0.1.6"
+  @version "0.1.7"
   @source_url "https://github.com/voltageAI/power_flow_solver"
 
   def project do
@@ -47,7 +47,7 @@ defmodule PowerFlowSolver.MixProject do
       {:rustler, "~> 0.36.0", runtime: false},
       {:rustler_precompiled, "~> 0.8"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
-      {:power_system_parsers, github: "voltageAI/power_system_parsers", only: :test}
+      {:power_system_parsers, github: "voltageAI/power_system_parsers", tag: "v0.3.0", only: :test}
     ]
   end
 
