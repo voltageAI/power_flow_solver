@@ -8,6 +8,7 @@ use faer::prelude::SpSolver;
 use std::sync::Arc;
 
 mod power_flow;
+mod scr;
 
 mod atoms {
     rustler::atoms! {
@@ -1221,6 +1222,183 @@ fn validate_jacobian_rust(
         }
         Err(err) => Ok((atoms::error(), 0.0, 0.0, 0, vec![err])),
     }
+}
+
+// ============================================================================
+// Short Circuit Ratio (SCR) NIF Functions
+// ============================================================================
+
+/// Calculate SCR for multiple plants
+///
+/// # Arguments
+/// * `y_bus_data` - Y-bus in CSR format: (row_ptrs, col_indices, values)
+/// * `plants` - List of plant data: [(bus_id, p_rated_mw, xdpp, mva_base), ...]
+/// * `system_mva_base` - System MVA base (typically 100.0)
+/// * `include_gen_reactance` - Whether to include generator reactances
+///
+/// # Returns
+/// * `{:ok, results}` - List of SCR results
+/// * `{:error, reason}` - Error message
+#[rustler::nif]
+fn calculate_scr_batch_rust(
+    y_bus_data: (Vec<usize>, Vec<usize>, Vec<ComplexTuple>),
+    plants: Vec<(usize, f64, Option<f64>, Option<f64>)>,  // (bus_id, p_rated_mw, xdpp, mva_base)
+    system_mva_base: f64,
+    include_gen_reactance: bool,
+) -> NifResult<(rustler::Atom, Vec<(usize, f64, f64, f64, f64, f64)>)> {
+    let (row_ptrs, col_indices, values_tuples) = y_bus_data;
+
+    // Convert Y-bus values to Complex64
+    let values: Vec<Complex64> = values_tuples
+        .into_iter()
+        .map(|(re, im)| Complex64::new(re, im))
+        .collect();
+
+    // Create Y-bus struct
+    let y_bus = scr::YBusCsr::new(row_ptrs, col_indices, values);
+
+    // Validate Y-bus
+    if let Err(e) = scr::validate_y_bus(&y_bus) {
+        eprintln!("Y-bus validation error: {}", e);
+        return Ok((atoms::error(), vec![]));
+    }
+
+    // Convert plant data
+    let plant_data: Vec<scr::PlantData> = plants
+        .into_iter()
+        .map(|(bus_id, p_rated_mw, xdpp, mva_base)| scr::PlantData {
+            bus_id,
+            p_rated_mw,
+            xdpp,
+            mva_base,
+        })
+        .collect();
+
+    // Configure SCR calculation
+    let config = scr::ScrConfig {
+        system_mva_base,
+        include_generator_reactance: include_gen_reactance,
+        conditioning_tolerance: 1e-10,
+    };
+
+    // Calculate SCR
+    match scr::calculate_scr_batch(&y_bus, &plant_data, &config) {
+        Ok(results) => {
+            // Convert results to tuple format for Elixir
+            let result_tuples: Vec<(usize, f64, f64, f64, f64, f64)> = results
+                .into_iter()
+                .map(|r| (
+                    r.bus_id,
+                    r.z_thevenin_pu,
+                    r.z_thevenin_angle,
+                    r.short_circuit_mva,
+                    r.p_rated_mw,
+                    r.scr,
+                ))
+                .collect();
+            Ok((atoms::ok(), result_tuples))
+        }
+        Err(e) => {
+            eprintln!("SCR calculation error: {}", e);
+            Ok((atoms::error(), vec![]))
+        }
+    }
+}
+
+/// Get Thevenin impedances at all buses
+///
+/// # Arguments
+/// * `y_bus_data` - Y-bus in CSR format: (row_ptrs, col_indices, values)
+/// * `system_mva_base` - System MVA base (typically 100.0)
+///
+/// # Returns
+/// * `{:ok, results}` - List of (bus_id, z_real, z_imag, short_circuit_mva)
+/// * `{:error, reason}` - Error message
+#[rustler::nif]
+fn get_thevenin_impedances_rust(
+    y_bus_data: (Vec<usize>, Vec<usize>, Vec<ComplexTuple>),
+    system_mva_base: f64,
+) -> NifResult<(rustler::Atom, Vec<(usize, f64, f64, f64)>)> {
+    let (row_ptrs, col_indices, values_tuples) = y_bus_data;
+
+    // Convert Y-bus values to Complex64
+    let values: Vec<Complex64> = values_tuples
+        .into_iter()
+        .map(|(re, im)| Complex64::new(re, im))
+        .collect();
+
+    // Create Y-bus struct
+    let y_bus = scr::YBusCsr::new(row_ptrs, col_indices, values);
+
+    // Configure SCR calculation
+    let config = scr::ScrConfig {
+        system_mva_base,
+        include_generator_reactance: false,
+        conditioning_tolerance: 1e-10,
+    };
+
+    // Get all Thevenin impedances
+    match scr::get_all_thevenin_impedances(&y_bus, &config) {
+        Ok(results) => {
+            // Convert to tuple format: (bus_id, z_real, z_imag, short_circuit_mva)
+            let result_tuples: Vec<(usize, f64, f64, f64)> = results
+                .into_iter()
+                .map(|(bus_id, z_th, s_sc)| (bus_id, z_th.re, z_th.im, s_sc))
+                .collect();
+            Ok((atoms::ok(), result_tuples))
+        }
+        Err(e) => {
+            eprintln!("Thevenin impedance calculation error: {}", e);
+            Ok((atoms::error(), vec![]))
+        }
+    }
+}
+
+/// Invert Y-bus to get full Z-bus matrix
+///
+/// This returns the complete Z-bus matrix, useful for detailed analysis.
+/// For large systems, consider using get_thevenin_impedances_rust instead.
+///
+/// # Arguments
+/// * `y_bus_data` - Y-bus in CSR format: (row_ptrs, col_indices, values)
+///
+/// # Returns
+/// * `{:ok, z_bus}` - Dense Z-bus as list of rows, each row is list of (real, imag)
+/// * `{:error, reason}` - Error message
+#[rustler::nif]
+fn invert_y_bus_rust(
+    y_bus_data: (Vec<usize>, Vec<usize>, Vec<ComplexTuple>),
+) -> NifResult<(rustler::Atom, Vec<Vec<ComplexTuple>>)> {
+    let (row_ptrs, col_indices, values_tuples) = y_bus_data;
+
+    // Convert Y-bus values to Complex64
+    let values: Vec<Complex64> = values_tuples
+        .into_iter()
+        .map(|(re, im)| Complex64::new(re, im))
+        .collect();
+
+    // Create Y-bus struct
+    let y_bus = scr::YBusCsr::new(row_ptrs, col_indices, values);
+
+    // Calculate Z-bus
+    let z_bus_result = scr::calculate_z_bus(&y_bus);
+
+    if !z_bus_result.success {
+        eprintln!("Z-bus calculation error: {:?}", z_bus_result.error);
+        return Ok((atoms::error(), vec![]));
+    }
+
+    // Convert to Elixir-friendly format
+    let z_bus_tuples: Vec<Vec<ComplexTuple>> = z_bus_result.z_bus
+        .into_iter()
+        .map(|row| {
+            row.into_iter()
+                .map(|c| (c.re, c.im))
+                .collect()
+        })
+        .collect();
+
+    Ok((atoms::ok(), z_bus_tuples))
 }
 
 rustler::init!("Elixir.PowerFlowSolver.SparseLinearAlgebra", load = load);

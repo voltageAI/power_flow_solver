@@ -494,4 +494,124 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
         _q_tolerance
       ),
       do: :erlang.nif_error(:nif_not_loaded)
+
+  # ============================================================================
+  # Short Circuit Ratio (SCR) Functions
+  # ============================================================================
+
+  @doc """
+  Calculate Short Circuit Ratio (SCR) for multiple plants.
+
+  This function computes the SCR at each plant's point of interconnection by:
+  1. Inverting the Y-bus to get the Z-bus (impedance matrix)
+  2. Extracting Thevenin impedances from Z-bus diagonal
+  3. Computing short circuit capacity: S_sc = S_base / |Z_th|
+  4. Computing SCR = S_sc / P_rated
+
+  ## Arguments
+
+  - `y_bus_data` - Y-bus matrix as `{row_ptrs, col_indices, values}`
+  - `plants` - List of plant tuples: `{bus_id, p_rated_mw, xdpp, mva_base}`
+    - `bus_id` - Bus index (0-based) where plant is connected
+    - `p_rated_mw` - Rated power of the plant in MW
+    - `xdpp` - Optional generator subtransient reactance (nil if not used)
+    - `mva_base` - Optional machine MVA base (nil if not used)
+  - `system_mva_base` - System MVA base (typically 100.0)
+  - `include_gen_reactance` - Whether to include generator subtransient reactances
+
+  ## Returns
+
+  - `{:ok, results}` - List of result tuples:
+    `{bus_id, z_thevenin_pu, z_thevenin_angle, short_circuit_mva, p_rated_mw, scr}`
+  - `{:error, []}` - Error if calculation fails
+
+  ## SCR Interpretation
+
+  - SCR < 3: Weak grid (potential stability issues, may need grid-forming inverters)
+  - SCR 3-5: Moderate grid strength
+  - SCR > 5: Strong grid (standard grid-following inverters typically OK)
+
+  ## Example
+
+      y_bus_data = {row_ptrs, col_indices, values}
+      plants = [
+        {5, 100.0, nil, nil},   # 100 MW plant at bus 5
+        {12, 50.0, 0.2, 60.0}   # 50 MW plant at bus 12 with X''d=0.2, 60 MVA base
+      ]
+
+      {:ok, results} = calculate_scr_batch_rust(y_bus_data, plants, 100.0, false)
+
+      Enum.each(results, fn {bus_id, z_th, z_angle, s_sc, p_rated, scr} ->
+        IO.puts("Bus \#{bus_id}: SCR = \#{Float.round(scr, 2)}, S_sc = \#{Float.round(s_sc, 1)} MVA")
+      end)
+  """
+  def calculate_scr_batch_rust(_y_bus_data, _plants, _system_mva_base, _include_gen_reactance),
+    do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  Get Thevenin impedances at all buses without plant-specific calculations.
+
+  This is useful for exploratory analysis to understand grid strength
+  across all buses before specifying plants.
+
+  ## Arguments
+
+  - `y_bus_data` - Y-bus matrix as `{row_ptrs, col_indices, values}`
+  - `system_mva_base` - System MVA base (typically 100.0)
+
+  ## Returns
+
+  - `{:ok, results}` - List of `{bus_id, z_real, z_imag, short_circuit_mva}`
+  - `{:error, []}` - Error if calculation fails
+
+  ## Example
+
+      {:ok, impedances} = get_thevenin_impedances_rust(y_bus_data, 100.0)
+
+      # Find weakest buses (highest impedance = lowest short circuit capacity)
+      weakest = impedances
+        |> Enum.sort_by(fn {_bus, _zr, _zi, s_sc} -> s_sc end)
+        |> Enum.take(10)
+
+      IO.puts("Top 10 weakest buses:")
+      Enum.each(weakest, fn {bus, zr, zi, s_sc} ->
+        z_mag = :math.sqrt(zr * zr + zi * zi)
+        IO.puts("  Bus \#{bus}: |Z_th| = \#{Float.round(z_mag, 4)} p.u., S_sc = \#{Float.round(s_sc, 1)} MVA")
+      end)
+  """
+  def get_thevenin_impedances_rust(_y_bus_data, _system_mva_base),
+    do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  Invert Y-bus to get the full Z-bus (impedance) matrix.
+
+  Returns the complete dense Z-bus matrix. For large systems (>1000 buses),
+  consider using `get_thevenin_impedances_rust/2` if you only need diagonal elements.
+
+  ## Arguments
+
+  - `y_bus_data` - Y-bus matrix as `{row_ptrs, col_indices, values}`
+
+  ## Returns
+
+  - `{:ok, z_bus}` - Dense Z-bus as list of rows, each row is list of `{real, imag}`
+  - `{:error, []}` - Error if inversion fails
+
+  ## Notes
+
+  The Z-bus matrix has important properties:
+  - Diagonal elements `Z_ii` are Thevenin impedances at each bus
+  - Off-diagonal elements `Z_ij` represent transfer impedances
+  - The matrix is symmetric for normal power systems
+
+  ## Example
+
+      {:ok, z_bus} = invert_y_bus_rust(y_bus_data)
+
+      # Get Thevenin impedance at bus 5
+      {z_real, z_imag} = Enum.at(z_bus, 5) |> Enum.at(5)
+      z_magnitude = :math.sqrt(z_real * z_real + z_imag * z_imag)
+  """
+  def invert_y_bus_rust(_y_bus_data),
+    do: :erlang.nif_error(:nif_not_loaded)
 end
