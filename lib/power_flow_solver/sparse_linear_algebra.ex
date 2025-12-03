@@ -614,4 +614,83 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
   """
   def invert_y_bus_rust(_y_bus_data),
     do: :erlang.nif_error(:nif_not_loaded)
+
+  # ============================================================================
+  # Contingency SCR Functions
+  # ============================================================================
+
+  @doc """
+  Calculate SCR at a bus with a single branch contingency (N-1).
+
+  Removes the specified branch from the network and calculates the resulting
+  Thevenin impedance and short circuit capacity at the POI bus.
+
+  ## Arguments
+
+  - `y_bus_data` - Y-bus matrix as `{row_ptrs, col_indices, values}`
+  - `branch_data` - Branch to remove as `{id, from_bus_idx, to_bus_idx, y_series, y_shunt}`
+    - `id` - Branch identifier
+    - `from_bus_idx` - From bus index (0-based)
+    - `to_bus_idx` - To bus index (0-based)
+    - `y_series` - Series admittance `{real, imag}` in per-unit
+    - `y_shunt` - Total shunt admittance `{real, imag}` in per-unit
+  - `poi_bus_idx` - Bus index where to calculate Thevenin impedance
+  - `system_mva_base` - System MVA base (typically 100.0)
+
+  ## Returns
+
+  - `{:ok, z_real, z_imag, short_circuit_mva}` - Success with results
+  - `{:error, 0.0, 0.0, 0.0}` - Calculation failed (e.g., network islanding)
+
+  ## Example
+
+      y_bus_data = {row_ptrs, col_indices, values}
+
+      # Remove branch from bus 0 to bus 1, check SCR at bus 5
+      branch = {1, 0, 1, {0.99, -9.9}, {0.0, 0.02}}
+      {:ok, z_re, z_im, s_sc} = calculate_contingency_scr_rust(y_bus_data, branch, 5, 100.0)
+
+      z_mag = :math.sqrt(z_re * z_re + z_im * z_im)
+      IO.puts("With branch 1 out: |Z_th| = \#{z_mag} pu, S_sc = \#{s_sc} MVA")
+  """
+  def calculate_contingency_scr_rust(_y_bus_data, _branch_data, _poi_bus_idx, _system_mva_base),
+    do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  Calculate SCR for multiple branch contingencies in parallel.
+
+  Efficiently scans multiple N-1 contingencies using parallel computation.
+  Each branch is tested independently, making this embarrassingly parallel.
+
+  ## Arguments
+
+  - `y_bus_data` - Y-bus matrix as `{row_ptrs, col_indices, values}`
+  - `branches` - List of branches: `[{id, from_bus_idx, to_bus_idx, y_series, y_shunt}, ...]`
+  - `poi_bus_idx` - Bus index where to calculate Thevenin impedance
+  - `system_mva_base` - System MVA base (typically 100.0)
+
+  ## Returns
+
+  - `{:ok, results}` - List of `{branch_id, z_real, z_imag, s_sc, success}`
+    - Results are in the same order as input branches
+    - `success` is `true` if calculation succeeded, `false` if contingency causes islanding
+
+  ## Example
+
+      branches = [
+        {0, 0, 1, {0.99, -9.9}, {0.0, 0.0}},
+        {1, 1, 2, {0.99, -9.9}, {0.0, 0.0}},
+        {2, 2, 3, {0.99, -9.9}, {0.0, 0.0}}
+      ]
+
+      {:ok, results} = calculate_contingency_scr_batch_rust(y_bus_data, branches, 5, 100.0)
+
+      # Find worst case (lowest S_sc)
+      valid_results = Enum.filter(results, fn {_, _, _, _, success} -> success end)
+      {worst_branch, _, _, lowest_ssc, _} = Enum.min_by(valid_results, fn {_, _, _, s_sc, _} -> s_sc end)
+
+      IO.puts("Worst contingency: branch \#{worst_branch}, S_sc = \#{lowest_ssc} MVA")
+  """
+  def calculate_contingency_scr_batch_rust(_y_bus_data, _branches, _poi_bus_idx, _system_mva_base),
+    do: :erlang.nif_error(:nif_not_loaded)
 end

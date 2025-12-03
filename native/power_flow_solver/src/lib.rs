@@ -7,6 +7,7 @@ use faer::complex_native::c64;
 use faer::prelude::SpSolver;
 use std::sync::Arc;
 
+mod contingency_scr;
 mod power_flow;
 mod scr;
 
@@ -1399,6 +1400,135 @@ fn invert_y_bus_rust(
         .collect();
 
     Ok((atoms::ok(), z_bus_tuples))
+}
+
+// ============================================================================
+// Contingency SCR NIF Functions
+// ============================================================================
+
+/// Calculate SCR at a bus with a single branch contingency (N-1)
+///
+/// # Arguments
+/// * `y_bus_data` - Y-bus in CSR format: (row_ptrs, col_indices, values)
+/// * `branch_data` - Branch to remove: (id, from_bus_idx, to_bus_idx, y_series, y_shunt)
+/// * `poi_bus_idx` - Bus index where to calculate Z_th
+/// * `system_mva_base` - System MVA base (typically 100.0)
+///
+/// # Returns
+/// * `{:ok, (z_real, z_imag, short_circuit_mva)}` - Success with results
+/// * `{:error, :islanding}` - Branch removal causes network islanding
+#[rustler::nif]
+fn calculate_contingency_scr_rust(
+    y_bus_data: (Vec<usize>, Vec<usize>, Vec<ComplexTuple>),
+    branch_data: (usize, usize, usize, ComplexTuple, ComplexTuple),
+    poi_bus_idx: usize,
+    system_mva_base: f64,
+) -> NifResult<(rustler::Atom, f64, f64, f64)> {
+    let (row_ptrs, col_indices, values_tuples) = y_bus_data;
+    let (branch_id, from_bus, to_bus, y_series_tuple, y_shunt_tuple) = branch_data;
+
+    // Convert Y-bus values to Complex64
+    let values: Vec<Complex64> = values_tuples
+        .into_iter()
+        .map(|(re, im)| Complex64::new(re, im))
+        .collect();
+
+    let y_bus = scr::YBusCsr::new(row_ptrs, col_indices, values);
+
+    // Create branch data
+    let branch = contingency_scr::BranchData {
+        id: branch_id,
+        from_bus,
+        to_bus,
+        y_series: Complex64::new(y_series_tuple.0, y_series_tuple.1),
+        y_shunt: Complex64::new(y_shunt_tuple.0, y_shunt_tuple.1),
+    };
+
+    let config = scr::ScrConfig {
+        system_mva_base,
+        ..Default::default()
+    };
+
+    let result = contingency_scr::calculate_contingency_scr(&y_bus, &branch, poi_bus_idx, &config);
+
+    if result.success {
+        Ok((
+            atoms::ok(),
+            result.z_thevenin.re,
+            result.z_thevenin.im,
+            result.short_circuit_mva,
+        ))
+    } else {
+        // Return error - the Elixir side will handle this
+        Ok((atoms::error(), 0.0, 0.0, 0.0))
+    }
+}
+
+/// Calculate SCR for multiple branch contingencies in parallel
+///
+/// # Arguments
+/// * `y_bus_data` - Y-bus in CSR format: (row_ptrs, col_indices, values)
+/// * `branches` - List of branches: [(id, from_bus_idx, to_bus_idx, y_series, y_shunt), ...]
+/// * `poi_bus_idx` - Bus index where to calculate Z_th
+/// * `system_mva_base` - System MVA base (typically 100.0)
+///
+/// # Returns
+/// * `{:ok, results}` - List of (branch_id, z_real, z_imag, s_sc, success)
+#[rustler::nif]
+fn calculate_contingency_scr_batch_rust(
+    y_bus_data: (Vec<usize>, Vec<usize>, Vec<ComplexTuple>),
+    branches: Vec<(usize, usize, usize, ComplexTuple, ComplexTuple)>,
+    poi_bus_idx: usize,
+    system_mva_base: f64,
+) -> NifResult<(rustler::Atom, Vec<(usize, f64, f64, f64, bool)>)> {
+    let (row_ptrs, col_indices, values_tuples) = y_bus_data;
+
+    // Convert Y-bus values to Complex64
+    let values: Vec<Complex64> = values_tuples
+        .into_iter()
+        .map(|(re, im)| Complex64::new(re, im))
+        .collect();
+
+    let y_bus = scr::YBusCsr::new(row_ptrs, col_indices, values);
+
+    // Convert branch data
+    let branch_data: Vec<contingency_scr::BranchData> = branches
+        .into_iter()
+        .map(|(id, from, to, y_s, y_sh)| contingency_scr::BranchData {
+            id,
+            from_bus: from,
+            to_bus: to,
+            y_series: Complex64::new(y_s.0, y_s.1),
+            y_shunt: Complex64::new(y_sh.0, y_sh.1),
+        })
+        .collect();
+
+    let config = scr::ScrConfig {
+        system_mva_base,
+        ..Default::default()
+    };
+
+    let results = contingency_scr::calculate_contingency_scr_batch(
+        &y_bus,
+        &branch_data,
+        poi_bus_idx,
+        &config,
+    );
+
+    let output: Vec<(usize, f64, f64, f64, bool)> = results
+        .into_iter()
+        .map(|r| {
+            (
+                r.branch_id,
+                if r.success { r.z_thevenin.re } else { 0.0 },
+                if r.success { r.z_thevenin.im } else { 0.0 },
+                r.short_circuit_mva,
+                r.success,
+            )
+        })
+        .collect();
+
+    Ok((atoms::ok(), output))
 }
 
 rustler::init!("Elixir.PowerFlowSolver.SparseLinearAlgebra", load = load);
