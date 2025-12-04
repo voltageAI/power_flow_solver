@@ -101,11 +101,6 @@ pub fn solve_power_flow(
     while iteration < config.max_iterations {
         iteration += 1;
 
-        if iteration <= 2 {
-            // Debug logging (commented out)
-            // eprintln!("\n--- Iteration {} ---", iteration);
-        }
-
         // 1. Calculate power injections
         let power_injections = compute_all_power_injections(&system.y_bus, &voltage);
 
@@ -137,18 +132,14 @@ pub fn solve_power_flow(
         // 4. Check convergence
         mismatch_norm = calculate_norm(&mismatch);
 
-        // Debug logging (commented out)
-
         if mismatch_norm < config.tolerance {
             converged = true;
             break;
         }
 
-        // 5. Solve linear system: J * delta = -mismatch (must negate to match Elixir)
-        let negated_mismatch: Vec<f64> = mismatch.iter().map(|x| -x).collect();
-        let delta = solve_sparse_system_direct(&jacobian, &negated_mismatch)?;
-
-        // Debug logging (commented out)
+        // 5. Solve linear system: J * delta = mismatch
+        // (J = ∂S_calc/∂x, mismatch = S_sched - S_calc, so J*Δx = mismatch)
+        let delta = solve_sparse_system_direct(&jacobian, &mismatch)?;
 
         // 6. Line search to find optimal step size
         let step_size = line_search_backtracking(
@@ -160,11 +151,6 @@ pub fn solve_power_flow(
             &system.buses,
             &system.y_bus,
         );
-
-        // Debug logging (commented out)
-        // if step_size < 1.0 {
-        //     eprintln!("Line search: using step_size = {:.4}", step_size);
-        // }
 
         // 7. Update voltage with adaptive step size
         update_voltage_with_step_size(&mut voltage, &delta, &angle_vars, &vmag_vars, step_size);
@@ -269,9 +255,9 @@ fn compute_power_injection(
         let y_ik = y_bus.values[idx];
         let v_k = voltage[k];
 
-        // S_i = conj(V_i) * I_i = conj(V_i) * sum(Y_ik * V_k)
-        // This matches Elixir: angle_diff = y_angle - v_i_angle + v_k_angle
-        let s_contribution = v_i.conj() * (y_ik * v_k);
+        // S_i = V_i * conj(I_i) = V_i * conj(sum(Y_ik * V_k))
+        // Standard power flow convention: S = V * conj(I)
+        let s_contribution = v_i * (y_ik * v_k).conj();
         p_sum += s_contribution.re;
         q_sum += s_contribution.im;
     }
@@ -379,17 +365,17 @@ fn build_jacobian_row(
         // ∂P/∂θ elements
         for (var_offset, &bus_k) in angle_vars.iter().enumerate() {
             let value = if bus_i == bus_k {
-                // Diagonal: ∂P_i/∂θ_i = -Q_i + V_i² * B_ii
+                // Diagonal: ∂P_i/∂θ_i = -Q_i - V_i² * B_ii
                 let y_ii = y_bus_map.get(&(bus_i, bus_i)).copied().unwrap_or(Complex64::new(0.0, 0.0));
-                -q_i + v_i.norm_sqr() * y_ii.im
+                -q_i - v_i.norm_sqr() * y_ii.im
             } else {
-                // Off-diagonal: ∂P_i/∂θ_k = -V_i * V_k * (G_ik * sin(θ_ik) - B_ik * cos(θ_ik))
+                // Off-diagonal: ∂P_i/∂θ_k = V_i * V_k * (G_ik * sin(θ_ik) - B_ik * cos(θ_ik))
                 if let Some(&y_ik) = y_bus_map.get(&(bus_i, bus_k)) {
                     let v_k = voltage[bus_k];
                     let theta_ik = v_i.arg() - v_k.arg();
                     let g_ik = y_ik.re;
                     let b_ik = y_ik.im;
-                    -v_i.norm() * v_k.norm() * (g_ik * theta_ik.sin() - b_ik * theta_ik.cos())
+                    v_i.norm() * v_k.norm() * (g_ik * theta_ik.sin() - b_ik * theta_ik.cos())
                 } else {
                     0.0
                 }
@@ -403,17 +389,17 @@ fn build_jacobian_row(
         // ∂P/∂V elements
         for (var_offset, &bus_k) in vmag_vars.iter().enumerate() {
             let value = if bus_i == bus_k {
-                // Diagonal: ∂P_i/∂V_i = -(P_i/V_i + V_i * G_ii)
+                // Diagonal: ∂P_i/∂V_i = P_i/V_i + V_i * G_ii
                 let y_ii = y_bus_map.get(&(bus_i, bus_i)).copied().unwrap_or(Complex64::new(0.0, 0.0));
-                -(p_i / v_i.norm() + v_i.norm() * y_ii.re)
+                p_i / v_i.norm() + v_i.norm() * y_ii.re
             } else {
-                // Off-diagonal: ∂P_i/∂V_k = -V_i * (G_ik * cos(θ_ik) + B_ik * sin(θ_ik))
+                // Off-diagonal: ∂P_i/∂V_k = V_i * (G_ik * cos(θ_ik) + B_ik * sin(θ_ik))
                 if let Some(&y_ik) = y_bus_map.get(&(bus_i, bus_k)) {
                     let v_k = voltage[bus_k];
                     let theta_ik = v_i.arg() - v_k.arg();
                     let g_ik = y_ik.re;
                     let b_ik = y_ik.im;
-                    -v_i.norm() * (g_ik * theta_ik.cos() + b_ik * theta_ik.sin())
+                    v_i.norm() * (g_ik * theta_ik.cos() + b_ik * theta_ik.sin())
                 } else {
                     0.0
                 }
@@ -458,9 +444,9 @@ fn build_jacobian_row(
         // ∂Q/∂V elements
         for (var_offset, &bus_k) in vmag_vars.iter().enumerate() {
             let value = if bus_i == bus_k {
-                // Diagonal: ∂Q_i/∂V_i = -Q_i/V_i - V_i * B_ii
+                // Diagonal: ∂Q_i/∂V_i = Q_i/V_i - V_i * B_ii
                 let y_ii = y_bus_map.get(&(bus_i, bus_i)).copied().unwrap_or(Complex64::new(0.0, 0.0));
-                -q_i / v_i.norm() - v_i.norm() * y_ii.im
+                q_i / v_i.norm() - v_i.norm() * y_ii.im
             } else {
                 // Off-diagonal: ∂Q_i/∂V_k = V_i * (G_ik * sin(θ_ik) - B_ik * cos(θ_ik))
                 if let Some(&y_ik) = y_bus_map.get(&(bus_i, bus_k)) {
@@ -765,12 +751,12 @@ fn compute_q_injections(y_bus: &YBusData, voltage: &[Complex64]) -> Vec<f64> {
             let y_ik = y_bus.values[idx];
             let v_k = voltage[k];
 
-            // S = conj(V_i) * (Y_ik * V_k)
+            // I_i = sum(Y_ik * V_k)
             sum += y_ik * v_k;
         }
 
-        // Q = Im(conj(V_i) * sum) = Im(S)
-        let s_contribution = v_i.conj() * sum;
+        // S = V_i * conj(I_i), Q = Im(S)
+        let s_contribution = v_i * sum.conj();
         q_injections[i] = s_contribution.im;
     }
 
