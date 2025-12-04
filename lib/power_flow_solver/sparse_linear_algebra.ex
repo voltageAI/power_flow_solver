@@ -37,21 +37,9 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       )
   """
 
-  version = Mix.Project.config()[:version]
-
-  use RustlerPrecompiled,
+  use Rustler,
     otp_app: :power_flow_solver,
-    crate: "power_flow_solver",
-    base_url: "https://github.com/voltageAI/power_flow_solver/releases/download/v#{version}",
-    # Set POWER_FLOW_FORCE_BUILD=true to build from source instead of downloading precompiled binary
-    force_build: System.get_env("POWER_FLOW_FORCE_BUILD") in ["1", "true"],
-    version: version,
-    targets: ~w(
-      aarch64-apple-darwin
-      x86_64-apple-darwin
-      x86_64-unknown-linux-gnu
-      x86_64-unknown-linux-musl
-    )
+    crate: "power_flow_solver"
 
   @doc """
   Solves a sparse linear system Ax = b using LU factorization.
