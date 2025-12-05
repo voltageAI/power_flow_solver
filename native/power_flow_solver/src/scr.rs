@@ -41,7 +41,6 @@
 
 use num_complex::Complex64;
 use rayon::prelude::*;
-use std::collections::HashMap;
 
 /// Input data for a single plant/generator for SCR calculation
 #[derive(Clone, Debug)]
@@ -80,7 +79,8 @@ pub struct ScrConfig {
     pub system_mva_base: f64,
     /// Whether to include generator subtransient reactances in the model
     pub include_generator_reactance: bool,
-    /// Tolerance for matrix conditioning checks
+    /// Tolerance for matrix conditioning checks (reserved for future use)
+    #[allow(dead_code)]
     pub conditioning_tolerance: f64,
 }
 
@@ -135,6 +135,7 @@ impl YBusCsr {
 
     /// Add a value to element at (i, j)
     /// If element doesn't exist, behavior depends on matrix structure
+    #[allow(dead_code)]
     pub fn add_to_diagonal(&mut self, i: usize, value: Complex64) {
         if i >= self.n {
             return;
@@ -188,6 +189,7 @@ pub struct ZBusResult {
 
 impl ZBusResult {
     /// Get Thevenin impedance at a bus (diagonal element)
+    #[allow(dead_code)]
     pub fn thevenin_impedance(&self, bus: usize) -> Option<Complex64> {
         if bus < self.n && self.success {
             Some(self.z_bus[bus][bus])
@@ -197,6 +199,7 @@ impl ZBusResult {
     }
 
     /// Get all diagonal elements (Thevenin impedances)
+    #[allow(dead_code)]
     pub fn all_thevenin_impedances(&self) -> Vec<Complex64> {
         if !self.success {
             return vec![];

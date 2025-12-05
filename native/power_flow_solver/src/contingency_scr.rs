@@ -58,6 +58,7 @@ pub struct ContingencyScrResult {
     /// Whether calculation succeeded (false if contingency causes islanding)
     pub success: bool,
     /// Error description if calculation failed
+    #[allow(dead_code)]
     pub error: Option<String>,
 }
 
@@ -135,7 +136,6 @@ pub fn remove_branch_from_ybus(y_bus: &YBusCsr, branch: &BranchData) -> Result<Y
 ///
 /// Only stores elements with magnitude above threshold to maintain sparsity.
 fn dense_to_csr(dense: &[Vec<Complex64>]) -> YBusCsr {
-    let n = dense.len();
     let mut row_ptrs = vec![0usize];
     let mut col_indices = Vec::new();
     let mut values = Vec::new();
@@ -284,6 +284,7 @@ pub fn calculate_contingency_scr_batch(
 /// # Returns
 ///
 /// The contingency with lowest S_sc, or None if all contingencies fail
+#[allow(dead_code)]
 pub fn find_worst_contingency(
     y_bus: &YBusCsr,
     branches: &[BranchData],

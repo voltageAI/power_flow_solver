@@ -37,6 +37,7 @@ pub struct BusData {
 
 /// Power system structure
 pub struct PowerSystem {
+    #[allow(dead_code)]
     pub n_buses: usize,
     pub y_bus: YBusData,
     pub buses: Vec<BusData>,
@@ -94,7 +95,6 @@ pub fn solve_power_flow(
 
     // Pre-compute variable indices (mutable for Q-limit adjustments)
     let (mut angle_vars, mut vmag_vars) = determine_variables(&system.buses);
-    let mut num_vars = angle_vars.len() + vmag_vars.len();
 
     // Create symbolic LU factorization once
     // (This will use the existing create_symbolic_lu function)
@@ -174,7 +174,6 @@ pub fn solve_power_flow(
                 // Rebuild variable indices after bus type changes
                 angle_vars = determine_variables(&system.buses).0;
                 vmag_vars = determine_variables(&system.buses).1;
-                num_vars = angle_vars.len() + vmag_vars.len();
             }
         }
     }
