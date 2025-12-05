@@ -460,7 +460,9 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
 
   ## Returns
 
-  - `{:ok, voltage, iterations, converged, final_mismatch}`
+  - `{:ok, voltage, q_generation, iterations, converged, final_mismatch}`
+    - `voltage` - Final voltage as [{mag, ang}, ...]
+    - `q_generation` - Q generation at each bus (computed from power flow equations)
   - `{:error, reason}`
 
   ## Example
@@ -469,7 +471,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       y_bus_data = {row_ptrs, col_indices, values}
       initial_v = [{1.0, 0.0}, {1.0, 0.0}, ...]
 
-      {:ok, final_v, iters, true, mismatch} =
+      {:ok, final_v, q_gen, iters, true, mismatch} =
         solve_power_flow_rust(buses, y_bus_data, initial_v, 100, 1.0e-2)
   """
   def solve_power_flow_rust(

@@ -133,7 +133,7 @@ defmodule PowerFlowSolver.IEEE118Test do
           angles_rad =
             system.buses
             |> Enum.map(fn bus ->
-              {_v_mag, v_ang} = Map.get(solution, bus.id)
+              {_v_mag, v_ang, _q_gen} = Map.get(solution, bus.id)
               {bus.id, v_ang}
             end)
             |> Map.new()
@@ -188,7 +188,7 @@ defmodule PowerFlowSolver.IEEE118Test do
           # Check voltage magnitudes
           v_mags =
             Enum.map(system.buses, fn bus ->
-              {v_mag, _v_ang} = Map.get(solution, bus.id)
+              {v_mag, _v_ang, _q_gen} = Map.get(solution, bus.id)
               v_mag
             end)
 
@@ -294,15 +294,15 @@ defmodule PowerFlowSolver.IEEE118Test do
 
       # Check if solutions are the same (relative to slack bus)
       # Since slack bus angle is arbitrary, compare relative angles
-      {_, warm_slack_ang} = Map.get(warm_solution, @slack_bus_id)
-      {_, flat_slack_ang} = Map.get(flat_solution, @slack_bus_id)
+      {_, warm_slack_ang, _} = Map.get(warm_solution, @slack_bus_id)
+      {_, flat_slack_ang, _} = Map.get(flat_solution, @slack_bus_id)
 
       IO.puts("  Slack bus angles: warm=#{Float.round(warm_slack_ang * 180 / :math.pi(), 2)}°, flat=#{Float.round(flat_slack_ang * 180 / :math.pi(), 2)}°")
 
       relative_angle_diffs =
         Enum.map(system.buses, fn bus ->
-          {_, warm_ang} = Map.get(warm_solution, bus.id)
-          {_, flat_ang} = Map.get(flat_solution, bus.id)
+          {_, warm_ang, _} = Map.get(warm_solution, bus.id)
+          {_, flat_ang, _} = Map.get(flat_solution, bus.id)
           warm_rel = warm_ang - warm_slack_ang
           flat_rel = flat_ang - flat_slack_ang
           abs(warm_rel - flat_rel) * 180 / :math.pi()
@@ -358,7 +358,7 @@ defmodule PowerFlowSolver.IEEE118Test do
             {:ok, solution, _} ->
               angles_deg =
                 Enum.map(system.buses, fn bus ->
-                  {_, ang} = Map.get(solution, bus.id)
+                  {_, ang, _} = Map.get(solution, bus.id)
                   ang * 180 / :math.pi()
                 end)
 

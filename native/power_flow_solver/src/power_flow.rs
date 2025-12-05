@@ -61,6 +61,7 @@ pub struct SolverConfig {
 /// Power flow result
 pub struct PowerFlowResult {
     pub voltage: Vec<(f64, f64)>, // (magnitude, angle) pairs
+    pub q_generation: Vec<f64>,   // Q generation at each bus (computed for PV/slack)
     pub iterations: usize,
     pub converged: bool,
     pub final_mismatch: f64,
@@ -188,13 +189,25 @@ pub fn solve_power_flow(
         })
         .collect();
 
-    // Debug logging (commented out)
-    // eprintln!("\n=== SOLVER FINISHED ===");
-    // eprintln!("Converged: {}, Iterations: {}, Final mismatch: {:.6e}",
-    //     converged, iteration, mismatch_norm);
+    // Calculate Q generation for all buses
+    // For PV and slack buses, Q is not a variable, so we compute it from the solved voltages
+    // Q_gen = Q_injection + Q_load (where Q_injection comes from power flow equations)
+    let q_injections = compute_q_injections(&system.y_bus, &voltage);
+    let q_generation: Vec<f64> = system.buses
+        .iter()
+        .enumerate()
+        .map(|(i, bus)| {
+            // Q_gen = Q_injection + Q_load
+            // Q_injection is the net reactive power flowing out of the bus
+            // Q_load is the reactive load at the bus (positive = consuming)
+            // So Q_gen = Q_injection + Q_load gives us the generation needed
+            q_injections[i] + bus.q_load
+        })
+        .collect();
 
     Ok(PowerFlowResult {
         voltage: final_voltage,
+        q_generation,
         iterations: iteration,
         converged,
         final_mismatch: mismatch_norm,

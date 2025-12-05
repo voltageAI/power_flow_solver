@@ -51,12 +51,19 @@ defmodule PowerFlowSolver.NewtonRaphson do
 
   ## Returns
 
-  - `{:ok, solution, iterations}` - Converged solution
+  - `{:ok, solution_map, iterations}` - Converged solution
+    - `solution_map` - Map of bus_id => {magnitude, angle, q_gen}
+      - `magnitude` - Voltage magnitude in per unit
+      - `angle` - Voltage angle in radians
+      - `q_gen` - Reactive power generation (computed from power flow equations)
+        For PV/slack buses, this is the actual Q output.
+        For PQ buses, this equals the input q_gen.
   - `{:error, reason}` - Error description
 
   ## Example
 
-      {:ok, solution, 5} = NewtonRaphsonRust.solve(system, tolerance: 1.0e-2)
+      {:ok, solution, 5} = NewtonRaphson.solve(system, tolerance: 1.0e-2)
+      {v_mag, v_ang, q_gen} = solution[bus_id]
   """
   def solve(system, opts \\ []) do
     max_iterations = Keyword.get(opts, :max_iterations, 100)
@@ -102,15 +109,18 @@ defmodule PowerFlowSolver.NewtonRaphson do
            enforce_q_limits,
            q_tolerance
          ) do
-      {:ok, final_voltage, iterations, true, _final_mismatch} ->
-        # Convert voltage back to map format for compatibility
-        voltage_map = list_to_voltage_map(final_voltage, system.buses)
-        {:ok, voltage_map, iterations}
+      {:ok, final_voltage, q_generation, iterations, true, _final_mismatch} ->
+        # Convert to solution map: bus_id => {magnitude, angle, q_gen}
+        # Q generation is computed from power flow equations for all buses
+        # For PV/slack buses this is the actual Q output; for PQ buses it equals q_gen input
+        solution_map = build_solution_map(final_voltage, q_generation, system.buses)
 
-      {:ok, _final_voltage, iterations, false, final_mismatch} ->
+        {:ok, solution_map, iterations}
+
+      {:ok, _final_voltage, _q_generation, iterations, false, final_mismatch} ->
         {:error, "Failed to converge in #{iterations} iterations (mismatch: #{final_mismatch})"}
 
-      {:error, [], 0, false, mismatch} when mismatch == 0.0 or mismatch == -0.0 ->
+      {:error, [], [], 0, false, mismatch} when mismatch == 0.0 or mismatch == -0.0 ->
         {:error, "Rust solver internal error (check stderr for details)"}
 
       {:error, reason} ->
@@ -243,14 +253,15 @@ defmodule PowerFlowSolver.NewtonRaphson do
   defp voltage_to_list(voltage) when is_list(voltage), do: voltage
   defp voltage_to_list(voltage) when is_tuple(voltage), do: Tuple.to_list(voltage)
 
-  # Convert list of {magnitude, angle} tuples back to voltage map
-  # Uses the actual bus IDs from the system, not array indices
-  defp list_to_voltage_map(voltage_list, buses) do
+  # Build solution map: bus_id => {magnitude, angle, q_gen}
+  # Combines voltage and Q generation into a single solution tuple per bus
+  defp build_solution_map(voltage_list, q_generation_list, buses) do
     voltage_list
+    |> Enum.zip(q_generation_list)
     |> Enum.zip(buses)
-    |> Enum.map(fn {voltage, bus} ->
+    |> Enum.map(fn {{{mag, ang}, q_gen}, bus} ->
       bus_id = Map.get(bus, :id)
-      {bus_id, voltage}
+      {bus_id, {mag, ang, q_gen}}
     end)
     |> Map.new()
   end

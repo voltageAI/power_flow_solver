@@ -1071,7 +1071,7 @@ fn solve_power_flow_rust(
     tolerance: f64,
     enforce_q_limits: bool,
     q_tolerance: f64,
-) -> NifResult<(rustler::Atom, Vec<(f64, f64)>, usize, bool, f64)> {
+) -> NifResult<(rustler::Atom, Vec<(f64, f64)>, Vec<f64>, usize, bool, f64)> {
 
     // Debug logging (commented out for cleaner test output)
     // eprintln!("\n=== NIF ENTRY: solve_power_flow_rust ===");
@@ -1129,12 +1129,14 @@ fn solve_power_flow_rust(
         Ok(result) => Ok((
             atoms::ok(),
             result.voltage,
+            result.q_generation,
             result.iterations,
             result.converged,
             result.final_mismatch,
         )),
         Err(_err) => Ok((
             atoms::error(),
+            vec![],
             vec![],
             0,
             false,
