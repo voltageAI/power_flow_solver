@@ -292,6 +292,12 @@ defmodule PowerFlowSolver.NewtonRaphson do
           (system.branches || []) ++ (system.transformers || [])
       end
 
+    # Get fixed shunts if available
+    # Fixed shunts add to the diagonal of the Y-bus matrix
+    # Parser provides shunts as %{fixed: [%{bus_id: ..., g: ..., b: ...}, ...], switched: [...]}
+    # where g and b are in MW/MVAR (system units, not per-unit)
+    fixed_shunts = get_fixed_shunts(system)
+
     # Initialize sparse matrix storage
     entries =
       Enum.flat_map(all_lines, fn branch ->
@@ -411,6 +417,34 @@ defmodule PowerFlowSolver.NewtonRaphson do
         end)
       end)
 
+    # Add fixed shunt contributions to diagonal entries
+    # Fixed shunts are grounded admittances that only affect diagonal elements
+    # Y_ii += G_shunt + j*B_shunt (in per-unit)
+    entries =
+      Enum.reduce(fixed_shunts, entries, fn shunt, acc ->
+        bus_id = shunt.bus_id
+        # g and b from parser are in MW/MVAR at system base
+        # Need to convert to per-unit: Y_pu = S_mva / S_base
+        # For shunts specified as G (MW) and B (MVAR): Y = G + jB
+        # The parser already gives us the values, we just need to add them
+        # Note: In PSS/E, shunt values are in MW/MVAR at nominal voltage
+        # Y_pu = (G + jB) / S_base where S_base is typically 100 MVA
+        # Since the parser should handle base conversion, we use values directly
+        g_shunt = if is_number(shunt.g), do: shunt.g, else: 0.0
+        b_shunt = if is_number(shunt.b), do: shunt.b, else: 0.0
+
+        # Get base_mva from system if available, default to 100
+        base_mva = Map.get(system, :base_mva, 100.0)
+
+        # Convert to per-unit
+        g_pu = g_shunt / base_mva
+        b_pu = b_shunt / base_mva
+
+        Map.update(acc, {bus_id, bus_id}, {g_pu, b_pu}, fn {existing_re, existing_im} ->
+          {existing_re + g_pu, existing_im + b_pu}
+        end)
+      end)
+
     # Convert to CSR format
     # First, group entries by row and sort by column within each row
     entries_by_row =
@@ -442,5 +476,27 @@ defmodule PowerFlowSolver.NewtonRaphson do
       col_indices: col_indices,
       values: values
     }
+  end
+
+  # Extract fixed shunts from system data
+  # Supports multiple formats:
+  # 1. system.shunts.fixed - list of %{bus_id: ..., g: ..., b: ...}
+  # 2. system.fixed_shunts - list of %{bus_id: ..., g: ..., b: ...}
+  # 3. Bus-level shunts (future): bus.g_shunt, bus.b_shunt
+  defp get_fixed_shunts(system) do
+    cond do
+      # Format 1: shunts map with :fixed key (from PSS/E parser)
+      Map.has_key?(system, :shunts) and is_map(system.shunts) and
+          Map.has_key?(system.shunts, :fixed) ->
+        system.shunts.fixed || []
+
+      # Format 2: direct fixed_shunts list
+      Map.has_key?(system, :fixed_shunts) and is_list(system.fixed_shunts) ->
+        system.fixed_shunts
+
+      # No shunts available
+      true ->
+        []
+    end
   end
 end
