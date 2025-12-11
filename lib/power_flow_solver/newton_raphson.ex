@@ -482,21 +482,36 @@ defmodule PowerFlowSolver.NewtonRaphson do
   # Supports multiple formats:
   # 1. system.shunts.fixed - list of %{bus_id: ..., g: ..., b: ...}
   # 2. system.fixed_shunts - list of %{bus_id: ..., g: ..., b: ...}
-  # 3. Bus-level shunts (future): bus.g_shunt, bus.b_shunt
-  defp get_fixed_shunts(system) do
-    cond do
-      # Format 1: shunts map with :fixed key (from PSS/E parser)
-      Map.has_key?(system, :shunts) and is_map(system.shunts) and
-          Map.has_key?(system.shunts, :fixed) ->
-        system.shunts.fixed || []
+  # 3. Bus-level shunts: bus.g_shunt, bus.b_shunt
+defp get_fixed_shunts(system) do
+  cond do
+    # Format 1: PSS/E parser produces system.shunts.fixed
+    Map.has_key?(system, :shunts) and is_map(system.shunts) and
+        Map.has_key?(system.shunts, :fixed) ->
+      system.shunts.fixed || []
 
-      # Format 2: direct fixed_shunts list
-      Map.has_key?(system, :fixed_shunts) and is_list(system.fixed_shunts) ->
-        system.fixed_shunts
+    # Format 2: system.fixed_shunts is already provided
+    Map.has_key?(system, :fixed_shunts) and is_list(system.fixed_shunts) ->
+      system.fixed_shunts
 
-      # No shunts available
-      true ->
-        []
-    end
+    true ->
+      #
+      # Format 3: Extract from bus structs (our CSV loader)
+      # Look for bus.shunt = {g, b}
+      #
+      system.buses
+      |> Enum.filter(fn bus ->
+        match?({g, b} when is_number(g) and is_number(b), bus[:shunt])
+      end)
+      |> Enum.map(fn bus ->
+        {g, b} = bus.shunt
+        %{
+          bus_id: bus.id,
+          g: g,
+          b: b
+        }
+      end)
   end
+end
+
 end
