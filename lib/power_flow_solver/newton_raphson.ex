@@ -245,7 +245,7 @@ defmodule PowerFlowSolver.NewtonRaphson do
 
   # Convert voltage map/list to list of {magnitude, angle} tuples
   defp voltage_to_list(voltage) when is_map(voltage) do
-    Enum.map(0..(map_size(voltage) - 1), fn i ->
+    Enum.map(0..(map_size(voltage) - 1)//1, fn i ->
       Map.get(voltage, i, {1.0, 0.0})
     end)
   end
@@ -455,7 +455,7 @@ defmodule PowerFlowSolver.NewtonRaphson do
 
     # Build CSR arrays
     {row_ptrs, col_indices, values} =
-      Enum.reduce(0..(num_buses - 1), {[0], [], []}, fn row, {rp, ci, v} ->
+      Enum.reduce(0..(num_buses - 1)//1, {[0], [], []}, fn row, {rp, ci, v} ->
         row_entries = Map.get(entries_by_row, row, [])
 
         # Extract column indices and values
