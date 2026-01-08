@@ -73,7 +73,7 @@ jobs:
               VERSION="${{ inputs.version }}"
             fi
 
-            FILENAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-x86_64-unknown-linux-gnu.tar.gz"
+            FILENAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-x86_64-unknown-linux-gnu.so.tar.gz"
 
             cd native/power_flow_solver/target/x86_64-unknown-linux-gnu/release
             tar -czvf "../../../../../${FILENAME}" libpower_flow_solver.so
@@ -244,7 +244,7 @@ jobs:
               VERSION="${{ inputs.version }}"
             fi
 
-            FILENAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-aarch64-apple-darwin.tar.gz"
+            FILENAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-aarch64-apple-darwin.so.tar.gz"
 
             cd native/power_flow_solver/target/aarch64-apple-darwin/release
             tar -czvf "../../../../../${FILENAME}" libpower_flow_solver.dylib
