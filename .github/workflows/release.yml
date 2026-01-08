@@ -73,10 +73,14 @@ jobs:
               VERSION="${{ inputs.version }}"
             fi
 
-            FILENAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-x86_64-unknown-linux-gnu.so.tar.gz"
+            # The .so filename inside the tar must match what RustlerPrecompiled expects
+            SO_NAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-x86_64-unknown-linux-gnu.so"
+            FILENAME="${SO_NAME}.tar.gz"
 
             cd native/power_flow_solver/target/x86_64-unknown-linux-gnu/release
-            tar -czvf "../../../../../${FILENAME}" libpower_flow_solver.so
+            cp libpower_flow_solver.so "${SO_NAME}"
+            tar -czvf "../../../../../${FILENAME}" "${SO_NAME}"
+            rm "${SO_NAME}"
             cd ../../../../..
           done
 
