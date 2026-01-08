@@ -1533,5 +1533,5 @@ fn calculate_contingency_scr_batch_rust(
     Ok((atoms::ok(), output))
 }
 
-rustler::init!("Elixir.PowerFlowSolver.SparseLinearAlgebra", load = load);
+rustler::init!("Elixir.PowerFlowSolver.Native", load = load);
 
