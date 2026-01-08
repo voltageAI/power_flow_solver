@@ -35,14 +35,13 @@ defmodule PowerFlowSolver.Native do
     crate: "power_flow_solver",
     base_url: "https://github.com/voltageAI/power_flow_solver/releases/download/v#{version}",
     version: version,
-    # Force build from source if env var is set
-    force_build: System.get_env("POWER_FLOW_SOLVER_BUILD") in ["1", "true", "TRUE"],
-    # Targets we build for:
-    # - x86_64-unknown-linux-gnu: AWS deployment (standard x86 instances)
-    # - aarch64-apple-darwin: Local dev on Mac M1/M2/M3
-    # Note: Linux aarch64 and macOS x86_64 have cross-compilation issues with OpenBLAS
+    # Force build from source if env var is set OR if not on Linux x86_64 (e.g., local Mac dev)
+    force_build:
+      System.get_env("POWER_FLOW_SOLVER_BUILD") in ["1", "true", "TRUE"] or
+        :erlang.system_info(:system_architecture) |> to_string() |> String.contains?("apple"),
+    # Only precompile for deploy target (Linux x86_64)
+    # Local dev on Mac builds from source (Rust required)
     targets: [
-      "aarch64-apple-darwin",
       "x86_64-unknown-linux-gnu"
     ],
     # NIF version - use :erlang.system_info(:nif_version) to check yours

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mix compile:*)",
+      "Bash(rustc:*)",
+      "Bash(cargo --version:*)",
+      "Bash(export POWER_FLOW_FORCE_BUILD=true)",
+      "Bash(mix deps.get:*)",
+      "Bash(mix rustler_precompiled.download:*)",
+      "Bash(chmod:*)",
+      "Bash(mix clean:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
