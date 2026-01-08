@@ -1,7 +1,7 @@
 defmodule PowerFlowSolver.MixProject do
   use Mix.Project
 
-  @version "0.2.2"
+  @version "0.2.3"
   @source_url "https://github.com/voltageAI/power_flow_solver"
 
   def project do
