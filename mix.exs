@@ -1,7 +1,7 @@
 defmodule PowerFlowSolver.MixProject do
   use Mix.Project
 
-  @version "0.1.16"
+  @version "0.2.0"
   @source_url "https://github.com/voltageAI/power_flow_solver"
 
   def project do
@@ -33,7 +33,7 @@ defmodule PowerFlowSolver.MixProject do
 
   defp package do
     [
-      files: ~w(lib native .formatter.exs mix.exs README.md LICENSE CHANGELOG.md),
+      files: ~w(lib native .formatter.exs mix.exs README.md LICENSE CHANGELOG.md checksum-*.exs),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url
@@ -44,9 +44,13 @@ defmodule PowerFlowSolver.MixProject do
   defp deps do
     [
       {:decimal, "~> 2.0"},
-      {:rustler, "~> 0.36.0"},
+      # Precompiled NIF support - downloads binaries from GitHub releases
+      {:rustler_precompiled, "~> 0.8"},
+      # Rustler is optional - only needed when building from source
+      {:rustler, "~> 0.36.0", optional: true},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
-      {:power_system_parsers, github: "voltageAI/power_system_parsers", tag: "v0.3.0", only: :test}
+      {:power_system_parsers,
+       github: "voltageAI/power_system_parsers", tag: "v0.3.0", only: :test}
     ]
   end
 

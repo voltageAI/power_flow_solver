@@ -3,7 +3,8 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
   Sparse linear algebra operations using native Rust implementation.
 
   This module provides high-performance sparse matrix operations optimized for
-  power flow calculations. It uses Rust NIFs to call efficient sparse solvers.
+  power flow calculations. It delegates to `PowerFlowSolver.Native` which uses
+  RustlerPrecompiled to download precompiled binaries.
 
   ## Supported Operations
 
@@ -37,9 +38,8 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       )
   """
 
-  use Rustler,
-    otp_app: :power_flow_solver,
-    crate: "power_flow_solver"
+  # Delegate all NIF calls to the Native module which uses RustlerPrecompiled
+  # This allows downloading precompiled binaries instead of compiling Rust from source
 
   @doc """
   Solves a sparse linear system Ax = b using LU factorization.
@@ -67,8 +67,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
 
       {:ok, x} = solve_csr(row_ptrs, col_indices, values, rhs)
   """
-  def solve_csr(_row_ptrs, _col_indices, _values, _rhs),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate solve_csr(row_ptrs, col_indices, values, rhs), to: PowerFlowSolver.Native
 
   @doc """
   Performs sparse matrix-vector multiplication: y = A * x
@@ -85,10 +84,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
   - `{:ok, y}` - Result vector
   - `{:error, reason}` - Error message
   """
-  def sparse_mv(_row_ptrs, _col_indices, _values, _x),
-    do: :erlang.nif_error(:nif_not_loaded)
-
-  def validate_jacobian_rust(buses, y_bus_data, voltage, epsilon \\ 1.0e-7)
+  defdelegate sparse_mv(row_ptrs, col_indices, values, x), to: PowerFlowSolver.Native
 
   @doc """
   Validates the analytical Jacobian against numerical finite differences.
@@ -122,8 +118,8 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       IO.puts("Avg relative error: \#{avg_err * 100}%")
       IO.puts("Number of large errors: \#{num_errs}")
   """
-  def validate_jacobian_rust(_buses, _y_bus_data, _voltage, _epsilon),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate validate_jacobian_rust(buses, y_bus_data, voltage, epsilon \\ 1.0e-7),
+    to: PowerFlowSolver.Native
 
   @doc """
   Computes LU factorization of a sparse matrix.
@@ -143,8 +139,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
 
   **Deprecated:** Use `create_symbolic_lu/2` and `factorize_with_symbolic/4` instead.
   """
-  def lu_factorize(_row_ptrs, _col_indices, _values),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate lu_factorize(row_ptrs, col_indices, values), to: PowerFlowSolver.Native
 
   @doc """
   Creates a symbolic LU factorization from matrix structure.
@@ -176,8 +171,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       {:ok, lu2} = factorize_with_symbolic(symbolic, row_ptrs, col_indices, values2)
       {:ok, solution2} = solve_with_lu(lu2, rhs2)
   """
-  def create_symbolic_lu(_row_ptrs, _col_indices),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate create_symbolic_lu(row_ptrs, col_indices), to: PowerFlowSolver.Native
 
   @doc """
   Performs numeric LU factorization using pre-computed symbolic factorization.
@@ -202,8 +196,8 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
   The `row_ptrs` and `col_indices` must match those used to create the symbolic
   factorization, or a dimension mismatch error will occur.
   """
-  def factorize_with_symbolic(_symbolic, _row_ptrs, _col_indices, _values),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate factorize_with_symbolic(symbolic, row_ptrs, col_indices, values),
+    to: PowerFlowSolver.Native
 
   @doc """
   Solves a linear system using pre-computed LU factorization.
@@ -229,8 +223,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       {:ok, x2} = solve_with_lu(lu, rhs2)
       {:ok, x3} = solve_with_lu(lu, rhs3)
   """
-  def solve_with_lu(_lu, _rhs),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate solve_with_lu(lu, rhs), to: PowerFlowSolver.Native
 
   @doc """
   Solves multiple linear systems using pre-computed LU factorization.
@@ -253,8 +246,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       rhs_list = [rhs1, rhs2, rhs3]
       {:ok, [x1, x2, x3]} = solve_multiple_with_lu(lu, rhs_list)
   """
-  def solve_multiple_with_lu(_lu, _rhs_list),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate solve_multiple_with_lu(lu, rhs_list), to: PowerFlowSolver.Native
 
   @doc """
   Builds the Jacobian matrix for Newton-Raphson power flow using Rust NIF.
@@ -286,8 +278,16 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
         build_jacobian_rust(y_row_ptrs, y_col_indices, y_values,
                            voltage, bus_types, angle_vars, vmag_vars)
   """
-  def build_jacobian_rust(_y_row_ptrs, _y_col_indices, _y_values, _voltage, _bus_types, _angle_vars, _vmag_vars),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate build_jacobian_rust(
+                y_row_ptrs,
+                y_col_indices,
+                y_values,
+                voltage,
+                bus_types,
+                angle_vars,
+                vmag_vars
+              ),
+              to: PowerFlowSolver.Native
 
   @doc """
   Calculate reactive power injection at a specific bus using Rust NIF.
@@ -321,8 +321,8 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
         bus_idx
       )
   """
-  def calculate_q_injection_rust(_row_ptrs, _col_indices, _values, _voltage, _bus_idx),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate calculate_q_injection_rust(row_ptrs, col_indices, values, voltage, bus_idx),
+    to: PowerFlowSolver.Native
 
   @doc """
   Calculate reactive power injection for multiple buses at once.
@@ -356,8 +356,14 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       # Convert to map
       q_map = Map.new(q_values)
   """
-  def calculate_q_injection_batch_rust(_row_ptrs, _col_indices, _values, _voltage, _bus_indices),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate calculate_q_injection_batch_rust(
+                row_ptrs,
+                col_indices,
+                values,
+                voltage,
+                bus_indices
+              ),
+              to: PowerFlowSolver.Native
 
   @doc """
   Create a voltage resource that stays in Rust memory.
@@ -399,8 +405,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
         [0, 1, 2]
       )
   """
-  def create_voltage_resource(_voltage),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate create_voltage_resource(voltage), to: PowerFlowSolver.Native
 
   @doc """
   Calculate Q injection for multiple buses using a voltage resource.
@@ -440,8 +445,14 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
 
       # Resource automatically freed when no longer referenced
   """
-  def calculate_q_batch_from_resource(_row_ptrs, _col_indices, _values, _voltage_res, _bus_indices),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate calculate_q_batch_from_resource(
+                row_ptrs,
+                col_indices,
+                values,
+                voltage_res,
+                bus_indices
+              ),
+              to: PowerFlowSolver.Native
 
   @doc """
   Solve power flow using complete Rust Newton-Raphson implementation.
@@ -474,16 +485,16 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       {:ok, final_v, q_gen, iters, true, mismatch} =
         solve_power_flow_rust(buses, y_bus_data, initial_v, 100, 1.0e-2)
   """
-  def solve_power_flow_rust(
-        _buses,
-        _y_bus_data,
-        _initial_voltage,
-        _max_iterations,
-        _tolerance,
-        _enforce_q_limits,
-        _q_tolerance
-      ),
-      do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate solve_power_flow_rust(
+                buses,
+                y_bus_data,
+                initial_voltage,
+                max_iterations,
+                tolerance,
+                enforce_q_limits,
+                q_tolerance
+              ),
+              to: PowerFlowSolver.Native
 
   # ============================================================================
   # Short Circuit Ratio (SCR) Functions
@@ -535,8 +546,13 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
         IO.puts("Bus \#{bus_id}: SCR = \#{Float.round(scr, 2)}, S_sc = \#{Float.round(s_sc, 1)} MVA")
       end)
   """
-  def calculate_scr_batch_rust(_y_bus_data, _plants, _system_mva_base, _include_gen_reactance),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate calculate_scr_batch_rust(
+                y_bus_data,
+                plants,
+                system_mva_base,
+                include_gen_reactance
+              ),
+              to: PowerFlowSolver.Native
 
   @doc """
   Get Thevenin impedances at all buses without plant-specific calculations.
@@ -569,8 +585,8 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
         IO.puts("  Bus \#{bus}: |Z_th| = \#{Float.round(z_mag, 4)} p.u., S_sc = \#{Float.round(s_sc, 1)} MVA")
       end)
   """
-  def get_thevenin_impedances_rust(_y_bus_data, _system_mva_base),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate get_thevenin_impedances_rust(y_bus_data, system_mva_base),
+    to: PowerFlowSolver.Native
 
   @doc """
   Invert Y-bus to get the full Z-bus (impedance) matrix.
@@ -602,8 +618,7 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       {z_real, z_imag} = Enum.at(z_bus, 5) |> Enum.at(5)
       z_magnitude = :math.sqrt(z_real * z_real + z_imag * z_imag)
   """
-  def invert_y_bus_rust(_y_bus_data),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate invert_y_bus_rust(y_bus_data), to: PowerFlowSolver.Native
 
   # ============================================================================
   # Contingency SCR Functions
@@ -643,8 +658,13 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
       z_mag = :math.sqrt(z_re * z_re + z_im * z_im)
       IO.puts("With branch 1 out: |Z_th| = \#{z_mag} pu, S_sc = \#{s_sc} MVA")
   """
-  def calculate_contingency_scr_rust(_y_bus_data, _branch_data, _poi_bus_idx, _system_mva_base),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate calculate_contingency_scr_rust(
+                y_bus_data,
+                branch_data,
+                poi_bus_idx,
+                system_mva_base
+              ),
+              to: PowerFlowSolver.Native
 
   @doc """
   Calculate SCR for multiple branch contingencies in parallel.
@@ -681,6 +701,11 @@ defmodule PowerFlowSolver.SparseLinearAlgebra do
 
       IO.puts("Worst contingency: branch \#{worst_branch}, S_sc = \#{lowest_ssc} MVA")
   """
-  def calculate_contingency_scr_batch_rust(_y_bus_data, _branches, _poi_bus_idx, _system_mva_base),
-    do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate calculate_contingency_scr_batch_rust(
+                y_bus_data,
+                branches,
+                poi_bus_idx,
+                system_mva_base
+              ),
+              to: PowerFlowSolver.Native
 end

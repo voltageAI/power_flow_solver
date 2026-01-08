@@ -1,99 +1,327 @@
-name: Build precompiled NIFs
+# Build and release precompiled NIFs for multiple platforms
+# This workflow runs when you push a new tag like v0.2.0
+#
+# For private repos, this workflow builds binaries and uploads them to GitHub Releases.
+# Consumers authenticate using GITHUB_TOKEN or a PAT with repo scope.
+
+name: Build Precompiled NIFs
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (e.g., 0.2.0)"
+        required: true
+        type: string
+
+env:
+  MIX_ENV: prod
+  # NIF versions to build for (check with :erlang.system_info(:nif_version))
+  NIF_VERSIONS: "2.16 2.17"
+
+permissions:
+  contents: write
 
 jobs:
-  build_release:
-    name: Build release artifacts
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-20.04
-            target: x86_64-unknown-linux-gnu
-          # macOS builds removed - not needed for Fly.io deployment
-          # macOS runners are slow/expensive on private repos
-          # Developers can build locally with: env POWER_FLOW_FORCE_BUILD=1 mix compile
-
-    runs-on: ${{ matrix.os }}
+  build_linux_x86_64:
+    name: Linux x86_64 (GNU)
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          otp-version: '27.3'
-          elixir-version: '1.17.0'
+          elixir-version: "1.18"
+          otp-version: "27"
 
-      - name: Install Rust
+      - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.85.1'
-          targets: ${{ matrix.target }}
+          targets: x86_64-unknown-linux-gnu
 
-      - name: Install build dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gfortran libssl-dev pkg-config
 
-      - name: Restore dependencies cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
-
-      - name: Install dependencies
+      - name: Get dependencies
         run: mix deps.get
 
-      - name: Build the NIF
+      - name: Build NIF for each NIF version
         run: |
-          export RUSTFLAGS="-C target-feature=+crt-static"
-          mix compile
-        env:
-          POWER_FLOW_FORCE_BUILD: "true"
-          RUSTLER_TARGET: ${{ matrix.target }}
+          for nif_version in $NIF_VERSIONS; do
+            echo "Building for NIF version $nif_version"
+            export RUSTLER_NIF_VERSION=$nif_version
 
-      - name: Build release tarball
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          PKG_NAME="libpower_flow_solver-v${VERSION}-nif-2.15-${{ matrix.target }}.so.tar.gz"
-          cd native/power_flow_solver/target/${{ matrix.target }}/release
-          tar -czf "$PKG_NAME" libpower_flow_solver.so
-          mv "$PKG_NAME" "$GITHUB_WORKSPACE/"
+            cd native/power_flow_solver
+            cargo build --release --target x86_64-unknown-linux-gnu
+            cd ../..
+
+            # Package the binary
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"  # Remove 'v' prefix if present
+            if [ -n "${{ inputs.version }}" ]; then
+              VERSION="${{ inputs.version }}"
+            fi
+
+            FILENAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-x86_64-unknown-linux-gnu.tar.gz"
+
+            cd native/power_flow_solver/target/x86_64-unknown-linux-gnu/release
+            tar -czvf "../../../../../${FILENAME}" libpower_flow_solver.so
+            cd ../../../../..
+          done
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: nif-${{ matrix.target }}
+          name: linux-x86_64-gnu
           path: "*.tar.gz"
+          retention-days: 1
+
+  build_linux_aarch64:
+    name: Linux aarch64 (GNU)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Get dependencies
+        run: mix deps.get
+
+      - name: Build NIF for each NIF version
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
+        run: |
+          for nif_version in $NIF_VERSIONS; do
+            echo "Building for NIF version $nif_version"
+            export RUSTLER_NIF_VERSION=$nif_version
+
+            cd native/power_flow_solver
+            cargo build --release --target aarch64-unknown-linux-gnu
+            cd ../..
+
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+            if [ -n "${{ inputs.version }}" ]; then
+              VERSION="${{ inputs.version }}"
+            fi
+
+            FILENAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-aarch64-unknown-linux-gnu.tar.gz"
+
+            cd native/power_flow_solver/target/aarch64-unknown-linux-gnu/release
+            tar -czvf "../../../../../${FILENAME}" libpower_flow_solver.so
+            cd ../../../../..
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-aarch64-gnu
+          path: "*.tar.gz"
+          retention-days: 1
+
+  build_macos_x86_64:
+    name: macOS x86_64
+    runs-on: macos-13  # Intel Mac
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Get dependencies
+        run: mix deps.get
+
+      - name: Build NIF for each NIF version
+        run: |
+          for nif_version in $NIF_VERSIONS; do
+            echo "Building for NIF version $nif_version"
+            export RUSTLER_NIF_VERSION=$nif_version
+
+            cd native/power_flow_solver
+            cargo build --release --target x86_64-apple-darwin
+            cd ../..
+
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+            if [ -n "${{ inputs.version }}" ]; then
+              VERSION="${{ inputs.version }}"
+            fi
+
+            FILENAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-x86_64-apple-darwin.tar.gz"
+
+            cd native/power_flow_solver/target/x86_64-apple-darwin/release
+            tar -czvf "../../../../../${FILENAME}" libpower_flow_solver.dylib
+            cd ../../../../..
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x86_64
+          path: "*.tar.gz"
+          retention-days: 1
+
+  build_macos_aarch64:
+    name: macOS aarch64 (Apple Silicon)
+    runs-on: macos-14  # M1 Mac
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Get dependencies
+        run: mix deps.get
+
+      - name: Build NIF for each NIF version
+        run: |
+          for nif_version in $NIF_VERSIONS; do
+            echo "Building for NIF version $nif_version"
+            export RUSTLER_NIF_VERSION=$nif_version
+
+            cd native/power_flow_solver
+            cargo build --release --target aarch64-apple-darwin
+            cd ../..
+
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+            if [ -n "${{ inputs.version }}" ]; then
+              VERSION="${{ inputs.version }}"
+            fi
+
+            FILENAME="libpower_flow_solver-v${VERSION}-nif-${nif_version}-aarch64-apple-darwin.tar.gz"
+
+            cd native/power_flow_solver/target/aarch64-apple-darwin/release
+            tar -czvf "../../../../../${FILENAME}" libpower_flow_solver.dylib
+            cd ../../../../..
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-aarch64
+          path: "*.tar.gz"
+          retention-days: 1
 
   create_release:
     name: Create GitHub Release
-    needs: build_release
+    needs: [build_linux_x86_64, build_linux_aarch64, build_macos_x86_64, build_macos_aarch64]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - name: Get dependencies
+        run: mix deps.get
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release_files
+          find artifacts -name "*.tar.gz" -exec mv {} release_files/ \;
+          ls -la release_files/
+
+      - name: Generate checksums
+        run: |
+          cd release_files
+          sha256sum *.tar.gz > checksums-sha256.txt
+          cat checksums-sha256.txt
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=v${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/**/*.tar.gz
-          generate_release_notes: true
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: false
+          files: |
+            release_files/*.tar.gz
+            release_files/checksums-sha256.txt
+          body: |
+            ## Precompiled NIFs for PowerFlowSolver ${{ steps.version.outputs.tag }}
+
+            ### Supported Platforms
+            - Linux x86_64 (GNU libc)
+            - Linux aarch64 (GNU libc)
+            - macOS x86_64 (Intel)
+            - macOS aarch64 (Apple Silicon)
+
+            ### NIF Versions
+            - 2.16 (OTP 26)
+            - 2.17 (OTP 27)
+
+            ### Usage
+
+            Add to your `mix.exs`:
+
+            ```elixir
+            {:power_flow_solver, git: "https://github.com/voltageAI/power_flow_solver.git", tag: "${{ steps.version.outputs.tag }}"}
+            ```
+
+            For private repo authentication, see the README.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
