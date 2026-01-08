@@ -37,12 +37,13 @@ defmodule PowerFlowSolver.Native do
     version: version,
     # Force build from source if env var is set
     force_build: System.get_env("POWER_FLOW_SOLVER_BUILD") in ["1", "true", "TRUE"],
-    # Targets we build for - adjust based on your deployment needs
+    # Targets we build for:
+    # - x86_64-unknown-linux-gnu: AWS deployment (standard x86 instances)
+    # - aarch64-apple-darwin: Local dev on Mac M1/M2/M3
+    # Note: Linux aarch64 and macOS x86_64 have cross-compilation issues with OpenBLAS
     targets: [
       "aarch64-apple-darwin",
-      "x86_64-apple-darwin",
-      "x86_64-unknown-linux-gnu",
-      "aarch64-unknown-linux-gnu"
+      "x86_64-unknown-linux-gnu"
     ],
     # NIF version - use :erlang.system_info(:nif_version) to check yours
     nif_versions: ["2.16", "2.17"]
